@@ -139,11 +139,40 @@ input[type="text"]:focus {
   min-height: 18px;
   margin-bottom: 6px;
 }
+#hudButtons {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  display: none;
+  gap: 6px;
+  z-index: 10;
+  pointer-events: all;
+}
+.hud-btn {
+  background: rgba(14, 45, 92, 0.88);
+  border: 1.5px solid #1e5ba0;
+  border-radius: 7px;
+  color: #cce4ff;
+  font-size: 14px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  transition: background 0.12s, border-color 0.12s;
+}
+.hud-btn:hover {
+  background: #163e80;
+  border-color: #55aaff;
+}
 </style>
 </head>
 <body>
 <div id="gameContainer">
   <canvas id="gameCanvas" width="900" height="620"></canvas>
+  <audio id="bgMusic" loop src="https://audio.ngfiles.com/581000/581578_TheFatRat-Unity.mp3"></audio>
+  <div id="hudButtons">
+    <button class="hud-btn" id="btnPause" title="Pause (P)">⏸</button>
+    <button class="hud-btn" id="btnInGameMenu" title="Return to Menu">⬅ Menu</button>
+  </div>
   <div id="overlay">
 
     <!-- MENU -->
@@ -227,12 +256,15 @@ const PERIOD_END_TIME    = 2.5;
 const SHOOT_COOLDOWN     = 0.5;
 const BOT_SPEED          = 200;
 const ELASTICITY         = 0.75;
+const SCORE_TO_WIN       = 3;
 
 // ============================================================
 //  GAME STATE
 // ============================================================
-let gameState  = 'menu';   // menu | playing | goal | periodEnd | gameOver | mpConnect | mpWaiting | mpLost
+let gameState  = 'menu';   // menu | playing | goal | periodEnd | gameOver | paused | mpConnect | mpWaiting | mpLost
 let gameMode   = null;     // local2p | bot | mp
+let paused     = false;
+let stateBeforePause = 'playing';
 let score      = { p1: 0, p2: 0 };
 let period     = 1;
 let periodTime = PERIOD_SECS;
@@ -584,6 +616,25 @@ function drawPeriodEndOverlay() {
   }
 }
 
+function drawPauseOverlay() {
+  ctx.fillStyle = 'rgba(0,0,20,0.68)';
+  ctx.fillRect(RX, RY, RW, RH);
+
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font        = 'bold 58px Arial';
+  ctx.fillStyle   = '#90c8ff';
+  ctx.shadowColor = '#0055cc';
+  ctx.shadowBlur  = 28;
+  ctx.fillText('⏸ PAUSED', CX, CY - 20);
+  ctx.shadowBlur = 0;
+
+  ctx.font      = '22px Arial';
+  ctx.fillStyle = 'rgba(180,220,255,0.65)';
+  ctx.fillText('Press P or Escape to resume', CX, CY + 44);
+}
+
 // ============================================================
 //  PHYSICS
 // ============================================================
@@ -720,7 +771,7 @@ function checkGoal() {
   if (puck.x < GOAL_L_BACK && puck.y > GOAL_TOP && puck.y < GOAL_BOT) {
     score.p2++;
     goalScorer    = 'p2';
-    afterGoalNext = overtime ? 'gameOver' : 'faceoff';
+    afterGoalNext = (score.p2 >= SCORE_TO_WIN || overtime) ? 'gameOver' : 'faceoff';
     gameState     = 'goal';
     goalDisplayTimer = GOAL_DISPLAY_TIME;
     return true;
@@ -729,7 +780,7 @@ function checkGoal() {
   if (puck.x > GOAL_R_BACK && puck.y > GOAL_TOP && puck.y < GOAL_BOT) {
     score.p1++;
     goalScorer    = 'p1';
-    afterGoalNext = overtime ? 'gameOver' : 'faceoff';
+    afterGoalNext = (score.p1 >= SCORE_TO_WIN || overtime) ? 'gameOver' : 'faceoff';
     gameState     = 'goal';
     goalDisplayTimer = GOAL_DISPLAY_TIME;
     return true;
@@ -853,6 +904,8 @@ function handleWsMsg(msg) {
       showPanel(null);
       gameMode  = 'mp';
       gameState = msg.phase;
+      showHudButtons(true);
+      playMusic();
     }
 
     // Mirror server phase
@@ -910,9 +963,12 @@ function startGame(mode) {
   period     = 1;
   periodTime = PERIOD_SECS;
   overtime   = false;
+  paused     = false;
   resetFaceoff();
   showPanel(null);
   gameState  = 'playing';
+  showHudButtons(true);
+  playMusic();
 }
 
 function endPeriod() {
@@ -933,6 +989,8 @@ function showGameOverScreen() {
   }
   document.getElementById('goWinner').textContent = winnerText;
   showPanel('gameOver');
+  showHudButtons(false);
+  stopMusic();
   gameState = 'gameOver';
 }
 
@@ -956,6 +1014,61 @@ function showPanel(name) {
   }
 }
 
+function showHudButtons(visible) {
+  document.getElementById('hudButtons').style.display = visible ? 'flex' : 'none';
+}
+
+// ============================================================
+//  MUSIC
+// ============================================================
+function playMusic() {
+  const audio = document.getElementById('bgMusic');
+  audio.currentTime = 0;
+  audio.play().catch(() => {});
+}
+
+function pauseMusic() {
+  document.getElementById('bgMusic').pause();
+}
+
+function resumeMusic() {
+  document.getElementById('bgMusic').play().catch(() => {});
+}
+
+function stopMusic() {
+  const audio = document.getElementById('bgMusic');
+  audio.pause();
+  audio.currentTime = 0;
+}
+
+// ============================================================
+//  PAUSE
+// ============================================================
+function togglePause() {
+  if (gameMode === 'mp') return; // no pause in multiplayer
+  if (!['playing', 'goal', 'periodEnd'].includes(gameState) && !paused) return;
+  paused = !paused;
+  if (paused) {
+    pauseMusic();
+    document.getElementById('btnPause').textContent = '▶';
+    document.getElementById('btnPause').title = 'Resume (P)';
+  } else {
+    resumeMusic();
+    document.getElementById('btnPause').textContent = '⏸';
+    document.getElementById('btnPause').title = 'Pause (P)';
+  }
+}
+
+function returnToMenu() {
+  if (ws) { ws.close(); ws = null; }
+  paused    = false;
+  gameMode  = null;
+  gameState = 'menu';
+  showHudButtons(false);
+  stopMusic();
+  showPanel('menu');
+}
+
 // ============================================================
 //  UPDATE
 // ============================================================
@@ -965,6 +1078,8 @@ function update(dt) {
     sendWsInput();
     return;
   }
+
+  if (paused) return;
 
   if (gameState === 'playing') {
     // Decrement shoot cooldowns
@@ -1082,6 +1197,7 @@ function render() {
 
     if (gameState === 'goal')      drawGoalOverlay();
     if (gameState === 'periodEnd') drawPeriodEndOverlay();
+    if (paused)                    drawPauseOverlay();
   }
   // In menu state the rink is visible behind the HTML overlay
 }
@@ -1106,6 +1222,10 @@ document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
     e.preventDefault();
+  }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    e.preventDefault();
+    togglePause();
   }
 });
 
@@ -1135,10 +1255,7 @@ document.getElementById('btnPlayAgain').addEventListener('click', () => {
   }
 });
 document.getElementById('btnMenu').addEventListener('click', () => {
-  if (ws) { ws.close(); ws = null; }
-  gameMode  = null;
-  gameState = 'menu';
-  showPanel('menu');
+  returnToMenu();
 });
 
 // MP Connect
@@ -1160,6 +1277,8 @@ document.getElementById('btnMpCancel').addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
   gameMode  = null;
   gameState = 'menu';
+  showHudButtons(false);
+  stopMusic();
   showPanel('menu');
 });
 
@@ -1168,8 +1287,14 @@ document.getElementById('btnMpLostMenu').addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
   gameMode  = null;
   gameState = 'menu';
+  showHudButtons(false);
+  stopMusic();
   showPanel('menu');
 });
+
+// HUD in-game buttons
+document.getElementById('btnPause').addEventListener('click', () => togglePause());
+document.getElementById('btnInGameMenu').addEventListener('click', () => returnToMenu());
 
 // ============================================================
 //  INIT

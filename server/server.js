@@ -31,8 +31,9 @@ const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     fs.readFile(INDEX_FILE, (err, data) => {
       if (err) {
+        console.error('[Icey Hockey] Failed to read index.html:', err);
         res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end('Internal Server Error');
+        res.end('Internal Server Error: could not read game file');
         return;
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

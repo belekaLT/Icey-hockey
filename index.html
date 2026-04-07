@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🏒 Icey Hockey</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1510,7 +1510,14 @@ if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
 
 // ── Responsive layout scaling ────────────────────────────────
 function updateLayout() {
-  const scale = Math.min(1, window.innerWidth / CANVAS_W);
+  const TOUCH_CONTROLS_H = 140; // approximate height of mobile controls bar
+  const availH = isMobile
+    ? window.innerHeight - TOUCH_CONTROLS_H
+    : window.innerHeight;
+  const scale = Math.min(1,
+    window.innerWidth / CANVAS_W,
+    availH / CANVAS_H
+  );
   const container = document.getElementById('gameContainer');
   const wrapper   = document.getElementById('gameWrapper');
   container.style.transform = `scale(${scale})`;
@@ -1543,7 +1550,7 @@ function bindMobileControls() {
 bindMobileControls();
 
 // ── Auto-fill WS URL from current host ──────────────────────
-if (location.protocol === 'http:' || location.protocol === 'https:') {
+if (location.protocol.startsWith('http')) {
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   document.getElementById('serverUrlInput').value = `${wsProto}//${location.host}`;
 }

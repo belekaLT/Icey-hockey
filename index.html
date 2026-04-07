@@ -692,13 +692,13 @@ function updatePuck(dt) {
     puck.y  = RY2 - PUCK_R;
     puck.vy = -Math.abs(puck.vy) * ELASTICITY;
   }
-  // Back of left net
-  if (puck.x - PUCK_R < GOAL_L_BACK) {
+  // Back of left net – only bounce if NOT in the goal opening (goals are detected by checkGoal)
+  if (puck.x - PUCK_R < GOAL_L_BACK && !(puck.y > GOAL_TOP && puck.y < GOAL_BOT)) {
     puck.x  = GOAL_L_BACK + PUCK_R;
     puck.vx = Math.abs(puck.vx) * ELASTICITY;
   }
-  // Back of right net
-  if (puck.x + PUCK_R > GOAL_R_BACK) {
+  // Back of right net – only bounce if NOT in the goal opening
+  if (puck.x + PUCK_R > GOAL_R_BACK && !(puck.y > GOAL_TOP && puck.y < GOAL_BOT)) {
     puck.x  = GOAL_R_BACK - PUCK_R;
     puck.vx = -Math.abs(puck.vx) * ELASTICITY;
   }

@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=900, initial-scale=1">
+<title>🏒 Icey Hockey</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0d1b2a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-family: 'Arial', sans-serif;
+  overflow: hidden;
+}
+#gameContainer {
+  position: relative;
+  width: 900px;
+  height: 620px;
+  box-shadow: 0 0 80px rgba(0, 100, 220, 0.45);
+  border-radius: 6px;
+}
+canvas {
+  display: block;
+  border-radius: 4px;
+}
+#overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+.panel {
+  pointer-events: all;
+  background: rgba(5, 14, 34, 0.93);
+  border: 2px solid rgba(70, 150, 255, 0.55);
+  border-radius: 18px;
+  padding: 38px 52px;
+  text-align: center;
+  color: #d8ecff;
+  min-width: 360px;
+  box-shadow: 0 0 50px rgba(0, 80, 210, 0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.panel h1 {
+  font-size: 46px;
+  font-weight: 900;
+  color: #7ac4ff;
+  text-shadow: 0 0 28px rgba(80, 180, 255, 0.85);
+  margin-bottom: 6px;
+  letter-spacing: 2px;
+}
+.panel h2 {
+  font-size: 28px;
+  font-weight: bold;
+  color: #7ac4ff;
+  margin-bottom: 18px;
+}
+.panel p {
+  font-size: 15px;
+  color: #90b8d8;
+  margin-bottom: 16px;
+}
+.btn {
+  display: block;
+  width: 100%;
+  padding: 14px 20px;
+  margin: 9px 0;
+  font-size: 19px;
+  font-weight: bold;
+  font-family: 'Arial', sans-serif;
+  border: 2px solid #1e5ba0;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, transform 0.1s, box-shadow 0.14s;
+  background: #0e2d5c;
+  color: #cce4ff;
+  outline: none;
+}
+.btn:hover {
+  background: #163e80;
+  border-color: #55aaff;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 22px rgba(50, 140, 255, 0.5);
+}
+.btn:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+}
+.btn-sm {
+  padding: 9px 16px;
+  font-size: 15px;
+  margin: 5px 0;
+}
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.btn-row .btn { flex: 1; }
+input[type="text"] {
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 15px;
+  font-family: 'Arial', sans-serif;
+  background: #081830;
+  border: 2px solid #1e5ba0;
+  border-radius: 9px;
+  color: #cce4ff;
+  margin-bottom: 10px;
+  outline: none;
+}
+input[type="text"]:focus {
+  border-color: #55aaff;
+  box-shadow: 0 0 10px rgba(50, 140, 255, 0.35);
+}
+.score-display {
+  font-size: 56px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  margin: 14px 0;
+}
+.score-p1 { color: #5590ff; }
+.score-sep { color: #8ab0d0; }
+.score-p2 { color: #ff5050; }
+.winner-text {
+  font-size: 23px;
+  font-weight: bold;
+  margin-bottom: 18px;
+  color: #e0f0ff;
+}
+#mpStatus {
+  font-size: 13px;
+  color: #ff7070;
+  min-height: 18px;
+  margin-bottom: 6px;
+}
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="900" height="620"></canvas>
+  <div id="overlay">
+
+    <!-- MENU -->
+    <div id="menuPanel" class="panel">
+      <h1>🏒 ICEY HOCKEY</h1>
+      <p>Choose your game mode:</p>
+      <button class="btn" id="btn2p">⚔ 2 Players (Local)</button>
+      <button class="btn" id="btnBot">🤖 vs Bot</button>
+      <button class="btn" id="btnMp">🌐 Multiplayer</button>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="gameOverPanel" class="panel" style="display:none">
+      <h2>🏆 GAME OVER</h2>
+      <div class="score-display">
+        <span class="score-p1" id="goScore1">0</span>
+        <span class="score-sep"> – </span>
+        <span class="score-p2" id="goScore2">0</span>
+      </div>
+      <div class="winner-text" id="goWinner"></div>
+      <div class="btn-row">
+        <button class="btn" id="btnPlayAgain">▶ Play Again</button>
+        <button class="btn" id="btnMenu">⬅ Menu</button>
+      </div>
+    </div>
+
+    <!-- MP CONNECT -->
+    <div id="mpConnectPanel" class="panel" style="display:none">
+      <h2>🌐 Multiplayer</h2>
+      <p>Enter the WebSocket server address:</p>
+      <input type="text" id="serverUrlInput" value="ws://localhost:3000" />
+      <div id="mpStatus"></div>
+      <button class="btn" id="btnConnect">Connect</button>
+      <button class="btn btn-sm" id="btnMpBack">← Back</button>
+    </div>
+
+    <!-- MP WAITING -->
+    <div id="mpWaitingPanel" class="panel" style="display:none">
+      <h2>⏳ Waiting for opponent…</h2>
+      <p id="mpRoleLabel" style="font-size:17px;color:#80c0ff;margin-bottom:22px;"></p>
+      <button class="btn btn-sm" id="btnMpCancel">← Cancel</button>
+    </div>
+
+    <!-- MP LOST -->
+    <div id="mpLostPanel" class="panel" style="display:none">
+      <h2>❌ Connection Lost</h2>
+      <p>The opponent disconnected or the server is unavailable.</p>
+      <button class="btn" id="btnMpLostMenu">← Menu</button>
+    </div>
+
+  </div><!-- #overlay -->
+</div><!-- #gameContainer -->
+
+<script>
+'use strict';
+
+// ============================================================
+//  CONSTANTS
+// ============================================================
+const CANVAS_W  = 900, CANVAS_H = 620;
+const HUD_H     = 40;
+const RX = 50,  RY = 50,  RW = 800, RH = 520;
+const RX2 = RX + RW;   // 850
+const RY2 = RY + RH;   // 570
+const CX = 450, CY = 310;
+const GOAL_H    = 120;
+const GOAL_D    = 22;
+const GOAL_TOP  = CY - GOAL_H / 2;   // 250
+const GOAL_BOT  = CY + GOAL_H / 2;   // 370
+const GOAL_L_BACK = RX  - GOAL_D;    // 28
+const GOAL_R_BACK = RX2 + GOAL_D;    // 872
+const P_R       = 22;
+const PUCK_R    = 10;
+const P_SPEED   = 260;
+const SHOOT_SPD = 520;
+const PUCK_FRIC = 0.985;
+const PERIOD_SECS       = 180;
+const NUM_PERIODS        = 3;
+const GOAL_DISPLAY_TIME  = 2.0;
+const PERIOD_END_TIME    = 2.5;
+const SHOOT_COOLDOWN     = 0.5;
+const BOT_SPEED          = 200;
+const ELASTICITY         = 0.75;
+
+// ============================================================
+//  GAME STATE
+// ============================================================
+let gameState  = 'menu';   // menu | playing | goal | periodEnd | gameOver | mpConnect | mpWaiting | mpLost
+let gameMode   = null;     // local2p | bot | mp
+let score      = { p1: 0, p2: 0 };
+let period     = 1;
+let periodTime = PERIOD_SECS;
+let overtime   = false;
+
+let goalDisplayTimer = 0;
+let goalScorer       = '';    // 'p1' | 'p2'
+let afterGoalNext    = 'faceoff';  // 'faceoff' | 'gameOver'
+let periodEndTimer   = 0;
+let lastTS           = 0;
+
+// Entities
+let p1   = makePlayer(250, CY);
+let p2   = makePlayer(650, CY);
+let puck = { x: CX, y: CY, vx: 0, vy: 0 };
+
+function makePlayer(x, y) {
+  return { x, y, vx: 0, vy: 0, shootCooldown: 0 };
+}
+
+// ============================================================
+//  INPUT STATE
+// ============================================================
+const keys = {};
+
+// ============================================================
+//  CANVAS
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+// ============================================================
+//  HELPER: ROUNDED RECT PATH
+// ============================================================
+function pathRR(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,     y + r);
+  ctx.arcTo(x,     y,     x + r, y,         r);
+  ctx.closePath();
+}
+
+// ============================================================
+//  DRAW: RINK
+// ============================================================
+function drawRink() {
+  // 1. Dark background
+  ctx.fillStyle = '#1a2a3a';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // 2. Ice surface – clipped to rounded rect
+  ctx.save();
+  pathRR(RX, RY, RW, RH, 40);
+  ctx.clip();
+
+  const iceGrad = ctx.createLinearGradient(RX, RY, RX + RW, RY + RH);
+  iceGrad.addColorStop(0,   '#c6e6f4');
+  iceGrad.addColorStop(0.5, '#dff0fc');
+  iceGrad.addColorStop(1,   '#cde8f5');
+  ctx.fillStyle = iceGrad;
+  ctx.fillRect(RX, RY, RW, RH);
+
+  // 3. Ice markings
+  // Red centre line
+  ctx.strokeStyle = 'rgba(210, 35, 35, 0.65)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(CX, RY); ctx.lineTo(CX, RY2); ctx.stroke();
+
+  // Blue lines
+  ctx.strokeStyle = 'rgba(30, 80, 210, 0.62)';
+  ctx.lineWidth = 3;
+  [316, 583].forEach(lx => {
+    ctx.beginPath(); ctx.moveTo(lx, RY); ctx.lineTo(lx, RY2); ctx.stroke();
+  });
+
+  // Centre circle
+  ctx.strokeStyle = 'rgba(210, 35, 35, 0.42)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(CX, CY, 60, 0, Math.PI * 2); ctx.stroke();
+
+  // Centre dot
+  ctx.fillStyle = 'rgba(210, 35, 35, 0.5)';
+  ctx.beginPath(); ctx.arc(CX, CY, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Faceoff dots
+  ctx.fillStyle = 'rgba(210, 35, 35, 0.65)';
+  [[316, 220], [316, 400], [583, 220], [583, 400]].forEach(([fx, fy]) => {
+    ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Goal creases (light blue semicircles)
+  ctx.fillStyle   = 'rgba(70, 120, 240, 0.16)';
+  ctx.strokeStyle = 'rgba(70, 120, 240, 0.45)';
+  ctx.lineWidth   = 1.5;
+
+  // Left crease – right half-circle centred at (RX, CY)
+  ctx.beginPath();
+  ctx.arc(RX, CY, 50, -Math.PI / 2, Math.PI / 2);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  // Right crease – left half-circle centred at (RX2, CY)
+  ctx.beginPath();
+  ctx.arc(RX2, CY, 50, Math.PI / 2, 3 * Math.PI / 2);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  ctx.restore(); // end ice clip
+
+  // 4. Goal nets (outside rink)
+  drawGoalNet('left');
+  drawGoalNet('right');
+
+  // 5. Rink border on top
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+  ctx.lineWidth   = 3;
+  pathRR(RX, RY, RW, RH, 40);
+  ctx.stroke();
+}
+
+function drawGoalNet(side) {
+  const isLeft = side === 'left';
+  const gx     = isLeft ? GOAL_L_BACK : RX2;
+  const gy     = GOAL_TOP;
+  const gw     = GOAL_D;
+  const gh     = GOAL_H;
+
+  // Net cavity background
+  ctx.fillStyle = 'rgba(30, 50, 70, 0.75)';
+  ctx.fillRect(gx, gy, gw, gh);
+
+  // Net grid
+  ctx.strokeStyle = 'rgba(160, 200, 220, 0.38)';
+  ctx.lineWidth   = 0.7;
+  for (let ny = gy; ny <= gy + gh; ny += 12) {
+    ctx.beginPath(); ctx.moveTo(gx, ny); ctx.lineTo(gx + gw, ny); ctx.stroke();
+  }
+  for (let nx = gx; nx <= gx + gw; nx += 11) {
+    ctx.beginPath(); ctx.moveTo(nx, gy); ctx.lineTo(nx, gy + gh); ctx.stroke();
+  }
+
+  // Red frame
+  ctx.strokeStyle = '#dd1e1e';
+  ctx.lineWidth   = 3;
+  ctx.strokeRect(gx, gy, gw, gh);
+
+  // Goal posts (red filled circles at the mouth of each goal)
+  const postX = isLeft ? RX : RX2;
+  ctx.fillStyle = '#dd1e1e';
+  [GOAL_TOP, GOAL_BOT].forEach(py => {
+    ctx.beginPath(); ctx.arc(postX, py, 5, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+// ============================================================
+//  DRAW: PLAYERS & PUCK
+// ============================================================
+function drawPlayers(s) {
+  drawOnePlayer(s.p1, '#2858cc', '#4070e8', '1');
+  drawOnePlayer(s.p2, '#c02828', '#e04040', '2');
+}
+
+function drawOnePlayer(pl, colorDark, colorLight, label) {
+  // Drop shadow
+  ctx.beginPath();
+  ctx.arc(pl.x + 2, pl.y + 3, P_R, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fill();
+
+  // Body gradient
+  const grad = ctx.createRadialGradient(pl.x - 6, pl.y - 6, 2, pl.x, pl.y, P_R);
+  grad.addColorStop(0, colorLight);
+  grad.addColorStop(1, colorDark);
+  ctx.beginPath();
+  ctx.arc(pl.x, pl.y, P_R, 0, Math.PI * 2);
+  ctx.fillStyle   = grad;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth   = 2.5;
+  ctx.stroke();
+
+  // Jersey number
+  ctx.fillStyle    = 'white';
+  ctx.font         = 'bold 15px Arial';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, pl.x, pl.y);
+}
+
+function drawPuck(s) {
+  const pk = s.puck;
+  // Shadow
+  ctx.beginPath();
+  ctx.arc(pk.x + 1, pk.y + 2, PUCK_R, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.38)';
+  ctx.fill();
+  // Body
+  ctx.beginPath();
+  ctx.arc(pk.x, pk.y, PUCK_R, 0, Math.PI * 2);
+  ctx.fillStyle = '#111';
+  ctx.fill();
+  // Rim highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+}
+
+// ============================================================
+//  DRAW: HUD
+// ============================================================
+function drawHUD(s) {
+  const { score: sc, period: per, time: t } = s;
+
+  // Background strip
+  ctx.fillStyle = 'rgba(4, 11, 28, 0.95)';
+  ctx.fillRect(0, 0, CANVAS_W, HUD_H);
+
+  // Bottom edge accent
+  ctx.strokeStyle = 'rgba(40, 110, 210, 0.48)';
+  ctx.lineWidth   = 1;
+  ctx.beginPath(); ctx.moveTo(0, HUD_H); ctx.lineTo(CANVAS_W, HUD_H); ctx.stroke();
+
+  ctx.textBaseline = 'middle';
+
+  // === P1 (left) ===
+  ctx.fillStyle = '#4078e8';
+  ctx.font      = 'bold 13px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('P1', 20, HUD_H / 2);
+
+  ctx.fillStyle = '#5a90ff';
+  ctx.font      = 'bold 27px Arial';
+  ctx.fillText(String(sc.p1), 44, HUD_H / 2);
+
+  // === Centre ===
+  const otFlag    = s.overtime || false;
+  const perLabel  = otFlag ? 'OT' : `P${per}/${NUM_PERIODS}`;
+  const mins      = Math.floor(t / 60);
+  const secs      = Math.floor(t % 60);
+  const timeStr   = `${mins}:${String(secs).padStart(2, '0')}`;
+
+  ctx.fillStyle = 'rgba(200,220,255,0.45)';
+  ctx.font      = '13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(perLabel, CX - 38, HUD_H / 2);
+
+  ctx.fillStyle = '#e8f4ff';
+  ctx.font      = 'bold 22px Arial';
+  ctx.fillText(timeStr, CX + 12, HUD_H / 2);
+
+  // Mode badge
+  if (gameMode === 'bot') {
+    ctx.fillStyle = 'rgba(255, 195, 80, 0.65)';
+    ctx.font      = '12px Arial';
+    ctx.fillText('🤖 BOT', CX + 72, HUD_H / 2);
+  } else if (gameMode === 'mp') {
+    ctx.fillStyle = 'rgba(80, 210, 120, 0.7)';
+    ctx.font      = '12px Arial';
+    ctx.fillText('🌐 ONLINE', CX + 78, HUD_H / 2);
+  }
+
+  // === P2 (right) ===
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ff4848';
+  ctx.font      = 'bold 27px Arial';
+  ctx.fillText(String(sc.p2), CANVAS_W - 44, HUD_H / 2);
+
+  ctx.fillStyle = '#ff3838';
+  ctx.font      = 'bold 13px Arial';
+  ctx.fillText('P2', CANVAS_W - 20, HUD_H / 2);
+
+  // Control hints at very bottom
+  ctx.fillStyle    = 'rgba(150, 185, 215, 0.48)';
+  ctx.font         = '11px Arial';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  if (gameMode === 'mp') {
+    const hint = mpRole === 1
+      ? 'You: P1 (Blue) – WASD + Space'
+      : 'You: P2 (Red) – ↑↓←→ + Enter';
+    ctx.fillText(hint, CX, CANVAS_H - 3);
+  } else {
+    ctx.fillText('P1: WASD + Space  |  P2: ↑↓←→ + Enter', CX, CANVAS_H - 3);
+  }
+}
+
+// ============================================================
+//  DRAW: OVERLAYS (drawn onto canvas)
+// ============================================================
+function drawGoalOverlay() {
+  // Darken rink
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  ctx.fillRect(RX, RY, RW, RH);
+
+  const pulse = 68 + 7 * Math.sin(goalDisplayTimer * 9);
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Main GOAL text
+  ctx.font        = `bold ${pulse}px Arial`;
+  ctx.fillStyle   = goalScorer === 'p1' ? '#88b8ff' : '#ff7878';
+  ctx.shadowColor = goalScorer === 'p1' ? '#1040ff' : '#ff1010';
+  ctx.shadowBlur  = 32;
+  ctx.fillText('GOAL! 🎉', CX, CY - 22);
+  ctx.shadowBlur  = 0;
+
+  // Sub-text
+  ctx.font      = 'bold 26px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  let who = goalScorer === 'p1' ? 'PLAYER 1 SCORES!' : (gameMode === 'bot' ? 'BOT SCORES!' : 'PLAYER 2 SCORES!');
+  ctx.fillText(who, CX, CY + 48);
+
+  // Score line
+  ctx.font      = 'bold 32px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText(`${score.p1}  –  ${score.p2}`, CX, CY + 90);
+}
+
+function drawPeriodEndOverlay() {
+  ctx.fillStyle = 'rgba(0,0,20,0.62)';
+  ctx.fillRect(RX, RY, RW, RH);
+
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font        = 'bold 50px Arial';
+  ctx.fillStyle   = '#90c8ff';
+  ctx.shadowColor = '#0055cc';
+  ctx.shadowBlur  = 24;
+
+  const label = overtime ? 'END OF OVERTIME' : `END OF PERIOD ${period}`;
+  ctx.fillText(label, CX, CY - 24);
+  ctx.shadowBlur = 0;
+
+  ctx.font      = 'bold 36px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillText(`${score.p1}  –  ${score.p2}`, CX, CY + 32);
+
+  if (!overtime && period < NUM_PERIODS) {
+    ctx.font      = '20px Arial';
+    ctx.fillStyle = 'rgba(180,220,255,0.55)';
+    ctx.fillText(`Period ${period + 1} starting soon…`, CX, CY + 76);
+  }
+}
+
+// ============================================================
+//  PHYSICS
+// ============================================================
+function updatePlayer(pl, up, down, left, right, dt) {
+  let ax = 0, ay = 0;
+  if (up)    ay -= P_SPEED;
+  if (down)  ay += P_SPEED;
+  if (left)  ax -= P_SPEED;
+  if (right) ax += P_SPEED;
+
+  pl.vx = pl.vx * 0.75 + ax * 0.25;
+  pl.vy = pl.vy * 0.75 + ay * 0.25;
+  pl.x += pl.vx * dt;
+  pl.y += pl.vy * dt;
+
+  // Clamp to rink bounds
+  pl.x = Math.max(RX + P_R, Math.min(RX2 - P_R, pl.x));
+  pl.y = Math.max(RY + P_R, Math.min(RY2 - P_R, pl.y));
+}
+
+function updatePuck(dt) {
+  puck.x += puck.vx * dt;
+  puck.y += puck.vy * dt;
+
+  // Friction
+  const f = Math.pow(PUCK_FRIC, dt * 60);
+  puck.vx *= f;
+  puck.vy *= f;
+
+  // Left wall – allow through goal opening
+  if (puck.x - PUCK_R < RX) {
+    if (puck.y > GOAL_TOP && puck.y < GOAL_BOT) {
+      // Pass-through toward goal – no bounce
+    } else {
+      puck.x  = RX + PUCK_R;
+      puck.vx = Math.abs(puck.vx) * ELASTICITY;
+    }
+  }
+  // Right wall
+  if (puck.x + PUCK_R > RX2) {
+    if (puck.y > GOAL_TOP && puck.y < GOAL_BOT) {
+      // Pass-through
+    } else {
+      puck.x  = RX2 - PUCK_R;
+      puck.vx = -Math.abs(puck.vx) * ELASTICITY;
+    }
+  }
+  // Top wall
+  if (puck.y - PUCK_R < RY) {
+    puck.y  = RY + PUCK_R;
+    puck.vy = Math.abs(puck.vy) * ELASTICITY;
+  }
+  // Bottom wall
+  if (puck.y + PUCK_R > RY2) {
+    puck.y  = RY2 - PUCK_R;
+    puck.vy = -Math.abs(puck.vy) * ELASTICITY;
+  }
+  // Back of left net
+  if (puck.x - PUCK_R < GOAL_L_BACK) {
+    puck.x  = GOAL_L_BACK + PUCK_R;
+    puck.vx = Math.abs(puck.vx) * ELASTICITY;
+  }
+  // Back of right net
+  if (puck.x + PUCK_R > GOAL_R_BACK) {
+    puck.x  = GOAL_R_BACK - PUCK_R;
+    puck.vx = -Math.abs(puck.vx) * ELASTICITY;
+  }
+  // Top/bottom edges of goal openings (goal post corners)
+  // If puck is in the goal zone x-range and near goal top/bot edges, keep it inside
+  if (puck.x < RX && puck.x > GOAL_L_BACK) {
+    if (puck.y - PUCK_R < GOAL_TOP) { puck.y = GOAL_TOP + PUCK_R; puck.vy = Math.abs(puck.vy) * ELASTICITY; }
+    if (puck.y + PUCK_R > GOAL_BOT) { puck.y = GOAL_BOT - PUCK_R; puck.vy = -Math.abs(puck.vy) * ELASTICITY; }
+  }
+  if (puck.x > RX2 && puck.x < GOAL_R_BACK) {
+    if (puck.y - PUCK_R < GOAL_TOP) { puck.y = GOAL_TOP + PUCK_R; puck.vy = Math.abs(puck.vy) * ELASTICITY; }
+    if (puck.y + PUCK_R > GOAL_BOT) { puck.y = GOAL_BOT - PUCK_R; puck.vy = -Math.abs(puck.vy) * ELASTICITY; }
+  }
+}
+
+function playerPuckCollision(pl) {
+  const dx   = puck.x - pl.x;
+  const dy   = puck.y - pl.y;
+  const dist = Math.hypot(dx, dy);
+  const minD = P_R + PUCK_R;
+
+  if (dist < minD && dist > 0.001) {
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    // Separate puck from player
+    puck.x = pl.x + nx * (minD + 0.5);
+    puck.y = pl.y + ny * (minD + 0.5);
+
+    // Impulse along normal
+    const rvx = puck.vx - pl.vx;
+    const rvy = puck.vy - pl.vy;
+    const dot = rvx * nx + rvy * ny;
+    if (dot < 0) {
+      puck.vx -= (1 + 0.8) * dot * nx;
+      puck.vy -= (1 + 0.8) * dot * ny;
+    }
+    // Transfer some player momentum
+    puck.vx += pl.vx * 0.22;
+    puck.vy += pl.vy * 0.22;
+
+    // Speed cap
+    const spd = Math.hypot(puck.vx, puck.vy);
+    if (spd > SHOOT_SPD * 1.15) {
+      puck.vx = puck.vx / spd * SHOOT_SPD * 1.15;
+      puck.vy = puck.vy / spd * SHOOT_SPD * 1.15;
+    }
+  }
+}
+
+function tryShoot(pl, targetX, targetY) {
+  if (pl.shootCooldown > 0) return false;
+  const dx = puck.x - pl.x;
+  const dy = puck.y - pl.y;
+  if (Math.hypot(dx, dy) > P_R + PUCK_R + 15) return false;
+
+  const tdx = targetX - puck.x;
+  const tdy = targetY - puck.y;
+  const d   = Math.hypot(tdx, tdy);
+  if (d > 0) {
+    puck.vx = tdx / d * SHOOT_SPD;
+    puck.vy = tdy / d * SHOOT_SPD;
+  }
+  pl.shootCooldown = SHOOT_COOLDOWN;
+  return true;
+}
+
+function checkGoal() {
+  // Left goal → P2 scores
+  if (puck.x < GOAL_L_BACK && puck.y > GOAL_TOP && puck.y < GOAL_BOT) {
+    score.p2++;
+    goalScorer    = 'p2';
+    afterGoalNext = overtime ? 'gameOver' : 'faceoff';
+    gameState     = 'goal';
+    goalDisplayTimer = GOAL_DISPLAY_TIME;
+    return true;
+  }
+  // Right goal → P1 scores
+  if (puck.x > GOAL_R_BACK && puck.y > GOAL_TOP && puck.y < GOAL_BOT) {
+    score.p1++;
+    goalScorer    = 'p1';
+    afterGoalNext = overtime ? 'gameOver' : 'faceoff';
+    gameState     = 'goal';
+    goalDisplayTimer = GOAL_DISPLAY_TIME;
+    return true;
+  }
+  return false;
+}
+
+// ============================================================
+//  BOT AI
+// ============================================================
+let botNoise      = 0;
+let botNoiseTimer = 0;
+
+function updateBot(dt) {
+  const bot = p2;
+  const px  = puck.x, py = puck.y;
+  const bx  = bot.x,  by = bot.y;
+  const distToPuck = Math.hypot(px - bx, py - by);
+
+  // Refresh aim noise occasionally
+  botNoiseTimer -= dt;
+  if (botNoiseTimer <= 0) {
+    botNoise      = (Math.random() - 0.5) * 60;   // ±30 px
+    botNoiseTimer = 0.25 + Math.random() * 0.35;
+  }
+
+  let targetX = px, targetY = py;
+
+  if (px > 600) {
+    // Defend – converge on puck to clear it
+    targetX = px;
+    targetY = py;
+  } else if (distToPuck < 90) {
+    // Attack – get slightly behind the puck to push toward left goal
+    targetX = px + 28;
+    targetY = py;
+  } else {
+    // Chase
+    targetX = px;
+    targetY = py;
+  }
+
+  const tdx   = targetX - bx;
+  const tdy   = targetY - by;
+  const tdist = Math.hypot(tdx, tdy);
+  let ax = 0, ay = 0;
+  if (tdist > 8) {
+    ax = tdx / tdist * BOT_SPEED;
+    ay = tdy / tdist * BOT_SPEED;
+  }
+
+  bot.vx = bot.vx * 0.75 + ax * 0.25;
+  bot.vy = bot.vy * 0.75 + ay * 0.25;
+  bot.x += bot.vx * dt;
+  bot.y += bot.vy * dt;
+
+  bot.x = Math.max(RX + P_R, Math.min(RX2 - P_R, bot.x));
+  bot.y = Math.max(RY + P_R, Math.min(RY2 - P_R, bot.y));
+
+  // Attempt to shoot toward left goal (opponent of bot)
+  tryShoot(bot, RX, CY + botNoise);
+}
+
+// ============================================================
+//  MULTIPLAYER – WebSocket client
+// ============================================================
+let ws       = null;
+let mpRole   = null;
+let mpState  = null;
+
+function connectWS(url) {
+  try { ws = new WebSocket(url); }
+  catch(e) {
+    document.getElementById('mpStatus').textContent = 'Invalid URL.';
+    return;
+  }
+
+  ws.onopen = () => {
+    document.getElementById('mpStatus').textContent = '';
+    showPanel('mpWaiting');
+    gameState = 'mpWaiting';
+  };
+
+  ws.onmessage = evt => {
+    try { handleWsMsg(JSON.parse(evt.data)); } catch(e) {}
+  };
+
+  ws.onerror = () => {
+    document.getElementById('mpStatus').textContent = 'Connection failed.';
+    showPanel('mpConnect');
+    gameState = 'mpConnect';
+    ws = null;
+  };
+
+  ws.onclose = () => {
+    if (gameState === 'playing' || gameState === 'goal' || gameState === 'periodEnd') {
+      showPanel('mpLost');
+      gameState = 'mpLost';
+    } else if (gameState === 'mpWaiting') {
+      showPanel('mpConnect');
+      gameState = 'mpConnect';
+      document.getElementById('mpStatus').textContent = 'Server closed connection.';
+    }
+    ws = null;
+  };
+}
+
+function handleWsMsg(msg) {
+  if (msg.type === 'role') {
+    mpRole = msg.role;
+    const roleDesc = mpRole === 1
+      ? 'You are Player 1 (Blue) – Left side'
+      : 'You are Player 2 (Red) – Right side';
+    document.getElementById('mpRoleLabel').textContent = roleDesc;
+
+  } else if (msg.type === 'state') {
+    mpState = msg;
+
+    // Transition from waiting once game begins
+    if (gameState === 'mpWaiting' && msg.phase !== 'waiting') {
+      showPanel(null);
+      gameMode  = 'mp';
+      gameState = msg.phase;
+    }
+
+    // Mirror server phase
+    if (msg.phase === 'playing' || msg.phase === 'goal' || msg.phase === 'periodEnd') {
+      if (msg.phase === 'goal' && gameState !== 'goal') {
+        goalScorer = msg.lastGoalScorer || '';
+      }
+      gameState = msg.phase;
+      // Sync local score/period for overlay drawing
+      score.p1  = msg.score.p1;
+      score.p2  = msg.score.p2;
+      period    = msg.period;
+      periodTime = msg.time;
+      overtime  = msg.overtime || false;
+
+    } else if (msg.phase === 'gameOver') {
+      score.p1 = msg.score.p1;
+      score.p2 = msg.score.p2;
+      gameState = 'gameOver';
+      showGameOverScreen();
+    }
+
+  } else if (msg.type === 'playerLeft') {
+    if (gameState !== 'menu' && gameState !== 'gameOver') {
+      showPanel('mpLost');
+      gameState = 'mpLost';
+    }
+  }
+}
+
+function sendWsInput() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const isP1  = mpRole === 1;
+  const up    = isP1 ? !!keys['KeyW']     : !!keys['ArrowUp'];
+  const down  = isP1 ? !!keys['KeyS']     : !!keys['ArrowDown'];
+  const left  = isP1 ? !!keys['KeyA']     : !!keys['ArrowLeft'];
+  const right = isP1 ? !!keys['KeyD']     : !!keys['ArrowRight'];
+  const shoot = isP1 ? !!keys['Space']    : !!keys['Enter'];
+  ws.send(JSON.stringify({ type: 'input', up, down, left, right, shoot }));
+}
+
+// ============================================================
+//  GAME MANAGEMENT
+// ============================================================
+function resetFaceoff() {
+  p1   = makePlayer(250, CY);
+  p2   = makePlayer(650, CY);
+  puck = { x: CX, y: CY, vx: 0, vy: 0 };
+  botNoise = 0; botNoiseTimer = 0;
+}
+
+function startGame(mode) {
+  gameMode   = mode;
+  score      = { p1: 0, p2: 0 };
+  period     = 1;
+  periodTime = PERIOD_SECS;
+  overtime   = false;
+  resetFaceoff();
+  showPanel(null);
+  gameState  = 'playing';
+}
+
+function endPeriod() {
+  gameState      = 'periodEnd';
+  periodEndTimer = PERIOD_END_TIME;
+}
+
+function showGameOverScreen() {
+  document.getElementById('goScore1').textContent = score.p1;
+  document.getElementById('goScore2').textContent = score.p2;
+  let winnerText;
+  if (score.p1 > score.p2) {
+    winnerText = '🔵 Player 1 Wins!';
+  } else if (score.p2 > score.p1) {
+    winnerText = gameMode === 'bot' ? '🤖 Bot Wins!' : '🔴 Player 2 Wins!';
+  } else {
+    winnerText = "It's a Draw!";
+  }
+  document.getElementById('goWinner').textContent = winnerText;
+  showPanel('gameOver');
+  gameState = 'gameOver';
+}
+
+// ============================================================
+//  PANEL MANAGEMENT
+// ============================================================
+const PANELS = ['menu', 'gameOver', 'mpConnect', 'mpWaiting', 'mpLost'];
+
+function showPanel(name) {
+  const overlay = document.getElementById('overlay');
+  PANELS.forEach(id => {
+    document.getElementById(id + 'Panel').style.display = 'none';
+  });
+  if (name) {
+    document.getElementById(name + 'Panel').style.display = 'block';
+    overlay.style.display       = 'flex';
+    overlay.style.pointerEvents = 'all';
+  } else {
+    overlay.style.display       = 'none';
+    overlay.style.pointerEvents = 'none';
+  }
+}
+
+// ============================================================
+//  UPDATE
+// ============================================================
+function update(dt) {
+  // Multiplayer: just stream input; rendering driven by server state
+  if (gameMode === 'mp') {
+    sendWsInput();
+    return;
+  }
+
+  if (gameState === 'playing') {
+    // Decrement shoot cooldowns
+    if (p1.shootCooldown > 0) p1.shootCooldown -= dt;
+    if (p2.shootCooldown > 0) p2.shootCooldown -= dt;
+
+    // P1 input
+    updatePlayer(p1,
+      !!keys['KeyW'], !!keys['KeyS'], !!keys['KeyA'], !!keys['KeyD'], dt);
+    if (keys['Space']) tryShoot(p1, RX2, CY);
+
+    // P2 – bot or human
+    if (gameMode === 'bot') {
+      updateBot(dt);
+    } else {
+      updatePlayer(p2,
+        !!keys['ArrowUp'], !!keys['ArrowDown'],
+        !!keys['ArrowLeft'], !!keys['ArrowRight'], dt);
+      if (keys['Enter']) tryShoot(p2, RX, CY);
+    }
+
+    // Puck
+    updatePuck(dt);
+
+    // Collisions
+    playerPuckCollision(p1);
+    playerPuckCollision(p2);
+
+    // Goal check
+    if (checkGoal()) return;
+
+    // Timer
+    periodTime -= dt;
+    if (periodTime <= 0) {
+      periodTime = 0;
+      endPeriod();
+    }
+
+  } else if (gameState === 'goal') {
+    goalDisplayTimer -= dt;
+    if (goalDisplayTimer <= 0) {
+      if (afterGoalNext === 'gameOver') {
+        showGameOverScreen();
+      } else {
+        resetFaceoff();
+        gameState = 'playing';
+      }
+    }
+
+  } else if (gameState === 'periodEnd') {
+    periodEndTimer -= dt;
+    if (periodEndTimer <= 0) {
+      if (overtime) {
+        // OT period timed out with no goal
+        showGameOverScreen();
+      } else if (period >= NUM_PERIODS) {
+        if (score.p1 === score.p2) {
+          // Tied – go to overtime
+          overtime   = true;
+          period++;
+          periodTime = PERIOD_SECS;
+          resetFaceoff();
+          gameState  = 'playing';
+        } else {
+          showGameOverScreen();
+        }
+      } else {
+        period++;
+        periodTime = PERIOD_SECS;
+        resetFaceoff();
+        gameState  = 'playing';
+      }
+    }
+  }
+}
+
+// ============================================================
+//  RENDER
+// ============================================================
+function buildRenderState() {
+  // In mp mode, use received server state
+  if (gameMode === 'mp' && mpState) {
+    return {
+      p1:       { x: mpState.p1.x,   y: mpState.p1.y   },
+      p2:       { x: mpState.p2.x,   y: mpState.p2.y   },
+      puck:     mpState.puck,
+      score:    mpState.score,
+      period:   mpState.period,
+      time:     mpState.time,
+      overtime: mpState.overtime || false,
+      phase:    mpState.phase
+    };
+  }
+  return {
+    p1:       { x: p1.x,    y: p1.y    },
+    p2:       { x: p2.x,    y: p2.y    },
+    puck:     { x: puck.x,  y: puck.y, vx: puck.vx, vy: puck.vy },
+    score,
+    period,
+    time:     periodTime,
+    overtime,
+    phase:    gameState
+  };
+}
+
+function render() {
+  const s = buildRenderState();
+
+  drawRink();
+
+  if (gameState !== 'menu') {
+    drawPlayers(s);
+    drawPuck(s);
+    drawHUD(s);
+
+    if (gameState === 'goal')      drawGoalOverlay();
+    if (gameState === 'periodEnd') drawPeriodEndOverlay();
+  }
+  // In menu state the rink is visible behind the HTML overlay
+}
+
+// ============================================================
+//  GAME LOOP
+// ============================================================
+function gameLoop(ts) {
+  const dt = Math.min((ts - (lastTS || ts)) / 1000, 0.05);
+  lastTS = ts;
+  update(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+//  EVENT LISTENERS
+// ============================================================
+document.addEventListener('keydown', e => {
+  // Don't capture keys while typing in an input
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  keys[e.code] = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('keyup', e => {
+  keys[e.code] = false;
+});
+
+// Menu
+document.getElementById('btn2p').addEventListener('click', () => startGame('local2p'));
+document.getElementById('btnBot').addEventListener('click', () => startGame('bot'));
+document.getElementById('btnMp').addEventListener('click', () => {
+  gameState = 'mpConnect';
+  document.getElementById('mpStatus').textContent = '';
+  showPanel('mpConnect');
+});
+
+// Game over
+document.getElementById('btnPlayAgain').addEventListener('click', () => {
+  const prevMode = gameMode;
+  if (ws) { ws.close(); ws = null; }
+  if (prevMode === 'mp') {
+    gameState = 'mpConnect';
+    document.getElementById('mpStatus').textContent = '';
+    showPanel('mpConnect');
+  } else {
+    startGame(prevMode);
+  }
+});
+document.getElementById('btnMenu').addEventListener('click', () => {
+  if (ws) { ws.close(); ws = null; }
+  gameMode  = null;
+  gameState = 'menu';
+  showPanel('menu');
+});
+
+// MP Connect
+document.getElementById('btnConnect').addEventListener('click', () => {
+  const url = document.getElementById('serverUrlInput').value.trim();
+  if (!url) return;
+  if (ws) { ws.close(); ws = null; }
+  document.getElementById('mpStatus').textContent = 'Connecting…';
+  connectWS(url);
+});
+document.getElementById('btnMpBack').addEventListener('click', () => {
+  if (ws) { ws.close(); ws = null; }
+  gameState = 'menu';
+  showPanel('menu');
+});
+
+// MP Waiting
+document.getElementById('btnMpCancel').addEventListener('click', () => {
+  if (ws) { ws.close(); ws = null; }
+  gameMode  = null;
+  gameState = 'menu';
+  showPanel('menu');
+});
+
+// MP Lost
+document.getElementById('btnMpLostMenu').addEventListener('click', () => {
+  if (ws) { ws.close(); ws = null; }
+  gameMode  = null;
+  gameState = 'menu';
+  showPanel('menu');
+});
+
+// ============================================================
+//  INIT
+// ============================================================
+showPanel('menu');
+gameState = 'menu';
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

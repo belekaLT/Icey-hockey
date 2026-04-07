@@ -312,17 +312,40 @@ input[type="text"]:focus {
     <!-- MP CONNECT -->
     <div id="mpConnectPanel" class="panel" style="display:none">
       <h2>🌐 Multiplayer</h2>
-      <p>Enter the WebSocket server address:</p>
-      <input type="text" id="serverUrlInput" value="ws://localhost:3000" />
-      <div id="mpStatus"></div>
-      <button class="btn" id="btnConnect">Connect</button>
-      <button class="btn btn-sm" id="btnMpBack">← Back</button>
+      <!-- Choose: host or join -->
+      <div id="mpChooseSection">
+        <p>How do you want to play?</p>
+        <button class="btn" id="btnHost">🏠 Host Game</button>
+        <button class="btn" id="btnShowJoin">🔑 Join with Code</button>
+        <div id="mpHostStatus" style="min-height:20px;margin:6px 0;color:#f08080;font-size:14px;"></div>
+        <button class="btn btn-sm" id="btnMpBack">← Back</button>
+      </div>
+      <!-- Join with code form -->
+      <div id="mpJoinSection" style="display:none">
+        <p>Enter the 6-character room code:</p>
+        <input type="text" id="joinCodeInput" maxlength="6" placeholder="ABC123"
+               style="text-transform:uppercase;letter-spacing:4px;font-size:22px;
+                      text-align:center;width:100%;padding:10px;margin-bottom:10px;
+                      background:#0a1e3a;border:2px solid #1e5ba0;border-radius:8px;
+                      color:#cce4ff;outline:none;" />
+        <div id="mpStatus" style="min-height:20px;margin:6px 0;color:#f08080;font-size:14px;"></div>
+        <button class="btn" id="btnJoinSubmit">Join Game</button>
+        <button class="btn btn-sm" id="btnJoinBack">← Back</button>
+      </div>
     </div>
 
     <!-- MP WAITING -->
     <div id="mpWaitingPanel" class="panel" style="display:none">
       <h2>⏳ Waiting for opponent…</h2>
-      <p id="mpRoleLabel" style="font-size:17px;color:#80c0ff;margin-bottom:22px;"></p>
+      <p id="mpRoleLabel" style="font-size:17px;color:#80c0ff;margin-bottom:12px;"></p>
+      <!-- Shown only to the host: the room code to share -->
+      <div id="mpRoomCodeBox" style="display:none;margin-bottom:18px;">
+        <p style="font-size:14px;margin-bottom:8px;">Share this code with your opponent:</p>
+        <div id="mpRoomCodeText"
+             style="font-size:40px;font-weight:900;letter-spacing:10px;
+                    color:#7ac4ff;font-family:monospace;margin-bottom:10px;"></div>
+        <button class="btn btn-sm" id="btnCopyCode" style="width:auto;display:inline-block;padding:6px 20px;">📋 Copy</button>
+      </div>
       <button class="btn btn-sm" id="btnMpCancel">← Cancel</button>
     </div>
 
@@ -996,21 +1019,78 @@ function updateBot(dt) {
 // ============================================================
 //  MULTIPLAYER – WebSocket client
 // ============================================================
-let ws       = null;
-let mpRole   = null;
-let mpState  = null;
+let ws         = null;
+let mpRole     = null;
+let mpState    = null;
+let mpRoomCode = null;  // set when hosting; null when joining
+
+function getWsBase() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${location.host}`;
+}
+
+async function hostRoom() {
+  document.getElementById('mpHostStatus').textContent = 'Creating room…';
+  document.getElementById('btnHost').disabled = true;
+  try {
+    const resp = await fetch('/create-room');
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    const data = await resp.json();
+    mpRoomCode = data.code;
+    document.getElementById('mpRoomCodeText').textContent = mpRoomCode;
+    document.getElementById('mpRoomCodeBox').style.display = '';
+    document.getElementById('mpHostStatus').textContent = '';
+    connectWS(`${getWsBase()}?code=${mpRoomCode}`);
+  } catch (e) {
+    document.getElementById('mpHostStatus').textContent =
+      'Could not create room. Is the server running?';
+  } finally {
+    document.getElementById('btnHost').disabled = false;
+  }
+}
+
+function joinRoom(code) {
+  const trimmed = code.trim().toUpperCase();
+  if (trimmed.length !== 6) {
+    document.getElementById('mpStatus').textContent = 'Code must be exactly 6 characters.';
+    return;
+  }
+  document.getElementById('mpStatus').textContent = 'Connecting…';
+  mpRoomCode = null;
+  connectWS(`${getWsBase()}?code=${trimmed}`);
+}
+
+function showMpChooseSection() {
+  document.getElementById('mpChooseSection').style.display = '';
+  document.getElementById('mpJoinSection').style.display   = 'none';
+}
+
+function showMpJoinSection() {
+  document.getElementById('mpChooseSection').style.display = 'none';
+  document.getElementById('mpJoinSection').style.display   = '';
+}
 
 function connectWS(url) {
   try { ws = new WebSocket(url); }
   catch(e) {
-    document.getElementById('mpStatus').textContent = 'Invalid URL.';
+    if (mpRoomCode) {
+      document.getElementById('mpHostStatus').textContent = 'Connection error.';
+      showMpChooseSection();
+    } else {
+      document.getElementById('mpStatus').textContent = 'Invalid URL.';
+    }
     return;
   }
 
   ws.onopen = () => {
-    document.getElementById('mpStatus').textContent = '';
     showPanel('mpWaiting');
     gameState = 'mpWaiting';
+    if (mpRoomCode) {
+      document.getElementById('mpRoomCodeText').textContent = mpRoomCode;
+      document.getElementById('mpRoomCodeBox').style.display = '';
+    } else {
+      document.getElementById('mpRoomCodeBox').style.display = 'none';
+    }
   };
 
   ws.onmessage = evt => {
@@ -1018,21 +1098,34 @@ function connectWS(url) {
   };
 
   ws.onerror = () => {
-    document.getElementById('mpStatus').textContent = 'Connection failed.';
+    if (mpRoomCode) {
+      document.getElementById('mpHostStatus').textContent = 'Connection failed.';
+      showMpChooseSection();
+    } else {
+      document.getElementById('mpStatus').textContent = 'Connection failed.';
+      showMpJoinSection();
+    }
     showPanel('mpConnect');
     gameState = 'mpConnect';
     ws = null;
   };
 
-  ws.onclose = () => {
+  ws.onclose = evt => {
     if (gameState === 'playing' || gameState === 'goal' || gameState === 'periodEnd') {
       document.getElementById('mobileControls').style.display = 'none';
       showPanel('mpLost');
       gameState = 'mpLost';
-    } else if (gameState === 'mpWaiting') {
+    } else if (gameState === 'mpWaiting' || gameState === 'mpConnect') {
+      const reason = evt.reason || 'Connection closed.';
+      if (mpRoomCode) {
+        document.getElementById('mpHostStatus').textContent = reason;
+        showMpChooseSection();
+      } else {
+        document.getElementById('mpStatus').textContent = reason;
+        showMpJoinSection();
+      }
       showPanel('mpConnect');
       gameState = 'mpConnect';
-      document.getElementById('mpStatus').textContent = 'Server closed connection.';
     }
     ws = null;
   };
@@ -1231,6 +1324,7 @@ function togglePause() {
 
 function returnToMenu() {
   if (ws) { ws.close(); ws = null; }
+  mpRoomCode = null;
   paused    = false;
   gameMode  = null;
   gameState = 'menu';
@@ -1426,8 +1520,11 @@ document.addEventListener('keyup', e => {
 document.getElementById('btn2p').addEventListener('click', () => startGame('local2p'));
 document.getElementById('btnBot').addEventListener('click', () => startGame('bot'));
 document.getElementById('btnMp').addEventListener('click', () => {
-  gameState = 'mpConnect';
+  mpRoomCode = null;
+  document.getElementById('mpHostStatus').textContent = '';
   document.getElementById('mpStatus').textContent = '';
+  showMpChooseSection();
+  gameState = 'mpConnect';
   showPanel('mpConnect');
 });
 
@@ -1436,8 +1533,11 @@ document.getElementById('btnPlayAgain').addEventListener('click', () => {
   const prevMode = gameMode;
   if (ws) { ws.close(); ws = null; }
   if (prevMode === 'mp') {
-    gameState = 'mpConnect';
+    mpRoomCode = null;
+    document.getElementById('mpHostStatus').textContent = '';
     document.getElementById('mpStatus').textContent = '';
+    showMpChooseSection();
+    gameState = 'mpConnect';
     showPanel('mpConnect');
   } else {
     startGame(prevMode);
@@ -1447,23 +1547,60 @@ document.getElementById('btnMenu').addEventListener('click', () => {
   returnToMenu();
 });
 
-// MP Connect
-document.getElementById('btnConnect').addEventListener('click', () => {
-  const url = document.getElementById('serverUrlInput').value.trim();
-  if (!url) return;
-  if (ws) { ws.close(); ws = null; }
-  document.getElementById('mpStatus').textContent = 'Connecting…';
-  connectWS(url);
+// MP Connect – Host
+document.getElementById('btnHost').addEventListener('click', () => {
+  hostRoom();
 });
+
+// MP Connect – Show join form
+document.getElementById('btnShowJoin').addEventListener('click', () => {
+  document.getElementById('mpStatus').textContent = '';
+  document.getElementById('joinCodeInput').value = '';
+  showMpJoinSection();
+});
+
+// MP Connect – Submit join code
+document.getElementById('btnJoinSubmit').addEventListener('click', () => {
+  joinRoom(document.getElementById('joinCodeInput').value);
+});
+
+document.getElementById('joinCodeInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') joinRoom(e.target.value);
+});
+
+document.getElementById('joinCodeInput').addEventListener('input', e => {
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+});
+
+// MP Connect – Back (join form → choose section)
+document.getElementById('btnJoinBack').addEventListener('click', () => {
+  document.getElementById('mpStatus').textContent = '';
+  showMpChooseSection();
+});
+
+// MP Connect – Back (choose section → menu)
 document.getElementById('btnMpBack').addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
+  mpRoomCode = null;
   gameState = 'menu';
   showPanel('menu');
+});
+
+// MP Waiting – Copy code button
+document.getElementById('btnCopyCode').addEventListener('click', () => {
+  if (!mpRoomCode) return;
+  navigator.clipboard.writeText(mpRoomCode).then(() => {
+    const btn = document.getElementById('btnCopyCode');
+    const orig = btn.textContent;
+    btn.textContent = '✔ Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }).catch(() => {});
 });
 
 // MP Waiting
 document.getElementById('btnMpCancel').addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
+  mpRoomCode = null;
   gameMode  = null;
   gameState = 'menu';
   showHudButtons(false);
@@ -1475,6 +1612,7 @@ document.getElementById('btnMpCancel').addEventListener('click', () => {
 // MP Lost
 document.getElementById('btnMpLostMenu').addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
+  mpRoomCode = null;
   gameMode  = null;
   gameState = 'menu';
   showHudButtons(false);
@@ -1548,12 +1686,6 @@ function bindMobileControls() {
   });
 }
 bindMobileControls();
-
-// ── Auto-fill WS URL from current host ──────────────────────
-if (location.protocol.startsWith('http')) {
-  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  document.getElementById('serverUrlInput').value = `${wsProto}//${location.host}`;
-}
 
 requestAnimationFrame(gameLoop);
 </script>

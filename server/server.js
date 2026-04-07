@@ -8,6 +8,13 @@
  *
  * Visit http://localhost:3000 to play in any browser.
  *
+ * Room flow:
+ *   1. Player 1 calls GET /create-room  → receives { code: 'ABC123' }
+ *   2. Both players connect via WebSocket with ?code=ABC123
+ *   3. Game starts when both players are in the room.
+ *   4. The code is one-time use: once the room has 2 players, no one else may join.
+ *      When either player disconnects the room is deleted.
+ *
  * Protocol:
  *   Server → Client
  *     { type:'role',   role: 1|2 }
@@ -26,8 +33,20 @@ const WebSocket  = require('ws');
 const PORT       = parseInt(process.env.PORT, 10) || 3000;
 const INDEX_FILE = pathModule.join(__dirname, '..', 'index.html');
 
-// ─── HTTP server (serves the game client) ────────────────────────────────────
+// ─── HTTP server (serves the game client + room creation API) ────────────────
 const httpServer = http.createServer((req, res) => {
+  // Room creation endpoint
+  if (req.method === 'GET' && req.url === '/create-room') {
+    const room = createRoom();
+    console.log(`[Icey Hockey] Room ${room.code} created via HTTP.`);
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ code: room.code }));
+    return;
+  }
+
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     fs.readFile(INDEX_FILE, (err, data) => {
       if (err) {
@@ -80,62 +99,101 @@ function makePuck() {
   return { x: CX, y: CY, vx: 0, vy: 0 };
 }
 
-// ─── Game state ──────────────────────────────────────────────────────────────
-let gameState = {
-  p1:       makePlayer(250, CY),
-  p2:       makePlayer(650, CY),
-  puck:     makePuck(),
-  score:    { p1: 0, p2: 0 },
-  period:   1,
-  time:     PERIOD_SECS,
-  overtime: false,
-  phase:    'waiting',           // waiting | playing | goal | periodEnd | gameOver
-  lastGoalScorer: '',
-};
+function makeInitialGameState() {
+  return {
+    p1:       makePlayer(250, CY),
+    p2:       makePlayer(650, CY),
+    puck:     makePuck(),
+    score:    { p1: 0, p2: 0 },
+    period:   1,
+    time:     PERIOD_SECS,
+    overtime: false,
+    phase:    'waiting',          // waiting | playing | goal | periodEnd | gameOver
+    lastGoalScorer: '',
+  };
+}
 
-// Phase timers
-let goalTimer      = 0;
-let periodEndTimer = 0;
+// ─── Room management ─────────────────────────────────────────────────────────
+// rooms: Map<code, room>
+// room: { code, clients, gameState, inputs, goalTimer, periodEndTimer }
+const rooms = new Map();
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// Note: I, O, 0, and 1 are intentionally excluded to avoid confusion
+// between visually similar characters when sharing codes verbally.
 
-// Latest inputs keyed by role (1 or 2)
-const inputs = {
-  1: { up: false, down: false, left: false, right: false, shoot: false },
-  2: { up: false, down: false, left: false, right: false, shoot: false },
-};
+function generateCode() {
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () =>
+      CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
+    ).join('');
+  } while (rooms.has(code));
+  return code;
+}
 
-// Connected clients: [{ ws, role }]
-let clients = [];
+function createRoom() {
+  const code = generateCode();
+  const room = {
+    code,
+    clients: [],
+    gameState: makeInitialGameState(),
+    inputs: {
+      1: { up: false, down: false, left: false, right: false, shoot: false },
+      2: { up: false, down: false, left: false, right: false, shoot: false },
+    },
+    goalTimer:      0,
+    periodEndTimer: 0,
+  };
+  rooms.set(code, room);
+  return room;
+}
+
+function deleteRoom(room) {
+  rooms.delete(room.code);
+  console.log(`[Icey Hockey] Room ${room.code} deleted.`);
+}
 
 // ─── WebSocket server ────────────────────────────────────────────────────────
 const wss = new WebSocket.Server({ server: httpServer });
 
-wss.on('connection', ws => {
-  if (clients.length >= 2) {
-    console.log('[Icey Hockey] Room full – rejecting connection.');
+wss.on('connection', (ws, req) => {
+  // Parse the room code from the WebSocket URL query string (?code=ABC123)
+  const reqUrl = new URL(req.url, `http://localhost`);
+  const code   = (reqUrl.searchParams.get('code') || '').toUpperCase();
+  const room   = rooms.get(code);
+
+  if (!room) {
+    console.log(`[Icey Hockey] Rejected connection – unknown code "${code}".`);
+    ws.close(1008, 'Invalid room code');
+    return;
+  }
+
+  if (room.clients.length >= 2) {
+    console.log(`[Icey Hockey] Rejected connection – room ${code} is full.`);
     ws.close(1008, 'Room full');
     return;
   }
 
-  const role = clients.length + 1;
-  clients.push({ ws, role });
-  console.log(`[Icey Hockey] Player ${role} connected. Total: ${clients.length}`);
+  const role = room.clients.length + 1;
+  room.clients.push({ ws, role });
+  console.log(`[Icey Hockey] Player ${role} joined room ${code}. Total: ${room.clients.length}`);
 
   // Assign role
   safeSend(ws, { type: 'role', role });
 
   // Send current state immediately so the client knows it's waiting
-  safeSend(ws, buildStateMsg());
+  safeSend(ws, buildStateMsg(room));
 
   // Start game when second player joins
-  if (clients.length === 2) {
-    startGame();
+  if (room.clients.length === 2) {
+    startGame(room);
   }
 
   ws.on('message', data => {
     try {
       const msg = JSON.parse(data);
       if (msg.type === 'input') {
-        inputs[role] = {
+        room.inputs[role] = {
           up:    !!msg.up,
           down:  !!msg.down,
           left:  !!msg.left,
@@ -147,18 +205,24 @@ wss.on('connection', ws => {
   });
 
   ws.on('close', () => {
-    clients = clients.filter(c => c.ws !== ws);
-    console.log(`[Icey Hockey] Player ${role} disconnected. Remaining: ${clients.length}`);
+    room.clients = room.clients.filter(c => c.ws !== ws);
+    console.log(`[Icey Hockey] Player ${role} left room ${room.code}. Remaining: ${room.clients.length}`);
 
-    // Notify the remaining client
-    clients.forEach(c => safeSend(c.ws, { type: 'playerLeft' }));
+    // Notify remaining clients and close their connections before deleting the room
+    room.clients.forEach(c => {
+      safeSend(c.ws, { type: 'playerLeft' });
+      if (c.ws.readyState === WebSocket.OPEN) {
+        try { c.ws.close(); } catch (e) { /* ignore */ }
+      }
+    });
+    room.clients = [];
 
-    // Reset everything so the next pair can play
-    resetGame();
+    // Remove the room so the code cannot be reused
+    deleteRoom(room);
   });
 
   ws.on('error', err => {
-    console.error(`[Icey Hockey] WS error (role ${role}):`, err.message);
+    console.error(`[Icey Hockey] WS error (room ${room.code}, role ${role}):`, err.message);
   });
 });
 
@@ -179,24 +243,24 @@ function updatePlayer(pl, input) {
   pl.y = Math.max(RY + P_R, Math.min(RY2 - P_R, pl.y));
 }
 
-function tryShoot(pl, targetX, targetY) {
+function tryShoot(gs, pl, targetX, targetY) {
   if (pl.shootCooldown > 0) return;
-  const dx = gameState.puck.x - pl.x;
-  const dy = gameState.puck.y - pl.y;
+  const dx = gs.puck.x - pl.x;
+  const dy = gs.puck.y - pl.y;
   if (Math.hypot(dx, dy) > P_R + PUCK_R + 15) return;
 
-  const tdx = targetX - gameState.puck.x;
-  const tdy = targetY - gameState.puck.y;
+  const tdx = targetX - gs.puck.x;
+  const tdy = targetY - gs.puck.y;
   const d   = Math.hypot(tdx, tdy);
   if (d > 0) {
-    gameState.puck.vx = tdx / d * SHOOT_SPD;
-    gameState.puck.vy = tdy / d * SHOOT_SPD;
+    gs.puck.vx = tdx / d * SHOOT_SPD;
+    gs.puck.vy = tdy / d * SHOOT_SPD;
   }
   pl.shootCooldown = SHOOT_CD;
 }
 
-function updatePuck() {
-  const pk = gameState.puck;
+function updatePuck(gs) {
+  const pk = gs.puck;
   pk.x += pk.vx * DT;
   pk.y += pk.vy * DT;
 
@@ -242,8 +306,8 @@ function updatePuck() {
   }
 }
 
-function playerPuckCollision(pl) {
-  const pk   = gameState.puck;
+function playerPuckCollision(gs, pl) {
+  const pk   = gs.puck;
   const dx   = pk.x - pl.x;
   const dy   = pk.y - pl.y;
   const dist = Math.hypot(dx, dy);
@@ -274,27 +338,28 @@ function playerPuckCollision(pl) {
   }
 }
 
-function checkGoal() {
-  const pk = gameState.puck;
+function checkGoal(room) {
+  const gs = room.gameState;
+  const pk = gs.puck;
   // Left goal → P2 scores
   if (pk.x < GOAL_L_BACK && pk.y > GOAL_TOP && pk.y < GOAL_BOT) {
-    gameState.score.p2++;
-    gameState.lastGoalScorer = 'p2';
-    gameState.phase = 'goal';
-    goalTimer = GOAL_DISP;
-    if (gameState.score.p2 >= SCORE_TO_WIN || gameState.overtime) {
-      gameState.phase = 'goal'; // will go to gameOver after timer
+    gs.score.p2++;
+    gs.lastGoalScorer = 'p2';
+    gs.phase = 'goal';
+    room.goalTimer = GOAL_DISP;
+    if (gs.score.p2 >= SCORE_TO_WIN || gs.overtime) {
+      gs.phase = 'goal'; // will go to gameOver after timer
     }
     return true;
   }
   // Right goal → P1 scores
   if (pk.x > GOAL_R_BACK && pk.y > GOAL_TOP && pk.y < GOAL_BOT) {
-    gameState.score.p1++;
-    gameState.lastGoalScorer = 'p1';
-    gameState.phase = 'goal';
-    goalTimer = GOAL_DISP;
-    if (gameState.score.p1 >= SCORE_TO_WIN || gameState.overtime) {
-      gameState.phase = 'goal'; // will go to gameOver after timer
+    gs.score.p1++;
+    gs.lastGoalScorer = 'p1';
+    gs.phase = 'goal';
+    room.goalTimer = GOAL_DISP;
+    if (gs.score.p1 >= SCORE_TO_WIN || gs.overtime) {
+      gs.phase = 'goal'; // will go to gameOver after timer
     }
     return true;
   }
@@ -302,109 +367,118 @@ function checkGoal() {
 }
 
 // ─── Game flow ───────────────────────────────────────────────────────────────
-function startGame() {
-  console.log('[Icey Hockey] Game starting!');
-  resetFaceoff();
-  gameState.score    = { p1: 0, p2: 0 };
-  gameState.period   = 1;
-  gameState.time     = PERIOD_SECS;
-  gameState.overtime = false;
-  gameState.phase    = 'playing';
-  goalTimer      = 0;
-  periodEndTimer = 0;
+function startGame(room) {
+  console.log(`[Icey Hockey] Room ${room.code}: game starting!`);
+  const gs = room.gameState;
+  resetFaceoff(gs);
+  gs.score    = { p1: 0, p2: 0 };
+  gs.period   = 1;
+  gs.time     = PERIOD_SECS;
+  gs.overtime = false;
+  gs.phase    = 'playing';
+  room.goalTimer      = 0;
+  room.periodEndTimer = 0;
 }
 
-function resetFaceoff() {
-  gameState.p1   = makePlayer(250, CY);
-  gameState.p2   = makePlayer(650, CY);
-  gameState.puck = makePuck();
+function resetFaceoff(gs) {
+  gs.p1   = makePlayer(250, CY);
+  gs.p2   = makePlayer(650, CY);
+  gs.puck = makePuck();
 }
 
-function endPeriod() {
-  gameState.phase = 'periodEnd';
-  periodEndTimer  = PERIOD_DISP;
+function endPeriod(room) {
+  room.gameState.phase = 'periodEnd';
+  room.periodEndTimer  = PERIOD_DISP;
 }
 
 // ─── Main game tick (30 fps) ──────────────────────────────────────────────────
 function gameTick() {
-  // Do nothing until both clients are connected
-  if (clients.length < 2) return;
-  if (gameState.phase === 'waiting') return;
+  for (const room of rooms.values()) {
+    tickRoom(room);
+  }
+}
 
-  switch (gameState.phase) {
+function tickRoom(room) {
+  const gs = room.gameState;
+
+  // Do nothing until both clients are connected
+  if (room.clients.length < 2) return;
+  if (gs.phase === 'waiting') return;
+
+  switch (gs.phase) {
 
     case 'playing': {
       // Cooldowns
-      if (gameState.p1.shootCooldown > 0) gameState.p1.shootCooldown -= DT;
-      if (gameState.p2.shootCooldown > 0) gameState.p2.shootCooldown -= DT;
+      if (gs.p1.shootCooldown > 0) gs.p1.shootCooldown -= DT;
+      if (gs.p2.shootCooldown > 0) gs.p2.shootCooldown -= DT;
 
       // Player movement
-      updatePlayer(gameState.p1, inputs[1]);
-      updatePlayer(gameState.p2, inputs[2]);
+      updatePlayer(gs.p1, room.inputs[1]);
+      updatePlayer(gs.p2, room.inputs[2]);
 
       // Shooting – P1 aims at right goal, P2 aims at left goal
-      if (inputs[1].shoot) tryShoot(gameState.p1, RX2, CY);
-      if (inputs[2].shoot) tryShoot(gameState.p2, RX,  CY);
+      if (room.inputs[1].shoot) tryShoot(gs, gs.p1, RX2, CY);
+      if (room.inputs[2].shoot) tryShoot(gs, gs.p2, RX,  CY);
 
       // Puck physics
-      updatePuck();
+      updatePuck(gs);
 
       // Collisions
-      playerPuckCollision(gameState.p1);
-      playerPuckCollision(gameState.p2);
+      playerPuckCollision(gs, gs.p1);
+      playerPuckCollision(gs, gs.p2);
 
       // Goal detection
-      if (checkGoal()) break;
+      if (checkGoal(room)) break;
 
       // Period countdown
-      gameState.time -= DT;
-      if (gameState.time <= 0) {
-        gameState.time = 0;
-        endPeriod();
+      gs.time -= DT;
+      if (gs.time <= 0) {
+        gs.time = 0;
+        endPeriod(room);
       }
       break;
     }
 
     case 'goal': {
-      goalTimer -= DT;
-      if (goalTimer <= 0) {
-        const s = gameState.score;
+      room.goalTimer -= DT;
+      if (room.goalTimer <= 0) {
+        const s = gs.score;
         // First to SCORE_TO_WIN goals wins
-        if (s.p1 >= SCORE_TO_WIN || s.p2 >= SCORE_TO_WIN || gameState.overtime) {
-          gameState.phase = 'gameOver';
+        if (s.p1 >= SCORE_TO_WIN || s.p2 >= SCORE_TO_WIN || gs.overtime) {
+          gs.phase = 'gameOver';
         } else {
-          resetFaceoff();
-          gameState.phase = 'playing';
+          resetFaceoff(gs);
+          gs.phase = 'playing';
         }
       }
       break;
     }
 
     case 'periodEnd': {
-      periodEndTimer -= DT;
-      if (periodEndTimer <= 0) {
-        if (gameState.overtime) {
+      room.periodEndTimer -= DT;
+      if (room.periodEndTimer <= 0) {
+        if (gs.overtime) {
           // OT timed out with no goal
-          gameState.phase = 'gameOver';
-        } else if (gameState.period >= NUM_PERIODS) {
-          if (gameState.score.p1 === gameState.score.p2) {
+          gs.phase = 'gameOver';
+        } else if (gs.period >= NUM_PERIODS) {
+          if (gs.score.p1 === gs.score.p2) {
             // Tied after regulation → overtime
-            gameState.overtime = true;
-            gameState.period++;
-            gameState.time = PERIOD_SECS;
-            resetFaceoff();
-            gameState.phase = 'playing';
-            console.log('[Icey Hockey] Overtime!');
+            gs.overtime = true;
+            gs.period++;
+            gs.time = PERIOD_SECS;
+            resetFaceoff(gs);
+            gs.phase = 'playing';
+            console.log(`[Icey Hockey] Room ${room.code}: Overtime!`);
           } else {
-            gameState.phase = 'gameOver';
+            gs.phase = 'gameOver';
           }
         } else {
           // Next period
-          gameState.period++;
-          gameState.time = PERIOD_SECS;
-          resetFaceoff();
-          gameState.phase = 'playing';
-          console.log(`[Icey Hockey] Period ${gameState.period} starting.`);
+          gs.period++;
+          gs.time = PERIOD_SECS;
+          resetFaceoff(gs);
+          gs.phase = 'playing';
+          console.log(`[Icey Hockey] Room ${room.code}: Period ${gs.period} starting.`);
         }
       }
       break;
@@ -415,12 +489,12 @@ function gameTick() {
       break;
   }
 
-  broadcast(buildStateMsg());
+  broadcastRoom(room, buildStateMsg(room));
 }
 
 // ─── State serialisation ─────────────────────────────────────────────────────
-function buildStateMsg() {
-  const gs = gameState;
+function buildStateMsg(room) {
+  const gs = room.gameState;
   return {
     type:    'state',
     p1:      { x: round2(gs.p1.x),   y: round2(gs.p1.y)   },
@@ -445,32 +519,13 @@ function safeSend(ws, obj) {
   }
 }
 
-function broadcast(obj) {
+function broadcastRoom(room, obj) {
   const json = JSON.stringify(obj);
-  clients.forEach(c => {
+  room.clients.forEach(c => {
     if (c.ws.readyState === WebSocket.OPEN) {
       try { c.ws.send(json); } catch (e) { /* ignore */ }
     }
   });
-}
-
-function resetGame() {
-  gameState = {
-    p1:       makePlayer(250, CY),
-    p2:       makePlayer(650, CY),
-    puck:     makePuck(),
-    score:    { p1: 0, p2: 0 },
-    period:   1,
-    time:     PERIOD_SECS,
-    overtime: false,
-    phase:    'waiting',
-    lastGoalScorer: '',
-  };
-  inputs[1] = { up: false, down: false, left: false, right: false, shoot: false };
-  inputs[2] = { up: false, down: false, left: false, right: false, shoot: false };
-  goalTimer      = 0;
-  periodEndTimer = 0;
-  console.log('[Icey Hockey] Game reset – waiting for players.');
 }
 
 // ─── Start tick loop ─────────────────────────────────────────────────────────

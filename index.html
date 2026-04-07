@@ -2,18 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=900, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🏒 Icey Hockey</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   background: #0d1b2a;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
   font-family: 'Arial', sans-serif;
-  overflow: hidden;
+  overflow: auto;
 }
 #gameContainer {
   position: relative;
@@ -25,6 +26,7 @@ body {
 canvas {
   display: block;
   border-radius: 4px;
+  touch-action: none;
 }
 #overlay {
   position: absolute;
@@ -163,9 +165,112 @@ input[type="text"]:focus {
   background: #163e80;
   border-color: #55aaff;
 }
+/* ── Responsive scaling wrapper ── */
+#gameWrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+#gameContainer {
+  flex-shrink: 0;
+  transform-origin: top center;
+}
+/* ── Platform picker ── */
+.platform-btn { flex: 1; }
+.platform-btn.active-platform {
+  border-color: #55aaff;
+  background: #163e80;
+}
+/* ── Mobile touch controls ── */
+#mobileControls {
+  display: none;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 900px;
+  padding: 10px 16px 14px;
+  background: rgba(5, 14, 34, 0.97);
+  border-top: 1px solid rgba(40, 110, 210, 0.4);
+  gap: 10px;
+  box-sizing: border-box;
+}
+.mobile-player-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dpad-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.dpad-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.dpad-btn {
+  width: 52px;
+  height: 52px;
+  background: rgba(14, 45, 92, 0.92);
+  border: 2px solid #1e5ba0;
+  border-radius: 10px;
+  color: #cce4ff;
+  font-size: 20px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.08s, border-color 0.08s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dpad-center-dot {
+  width: 52px;
+  height: 52px;
+  background: rgba(14, 45, 92, 0.5);
+  border: 2px solid rgba(30, 91, 160, 0.25);
+  border-radius: 10px;
+}
+.dpad-btn.active {
+  background: #163e80;
+  border-color: #55aaff;
+}
+.shoot-btn {
+  width: 68px;
+  height: 110px;
+  background: rgba(90, 20, 20, 0.92);
+  border: 2px solid #8c2020;
+  border-radius: 14px;
+  color: #ffc8c8;
+  font-size: 26px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.08s, border-color 0.08s;
+}
+.shoot-btn .shoot-label {
+  font-size: 9px;
+  color: rgba(255,200,200,0.7);
+  letter-spacing: 1px;
+}
+.shoot-btn.active {
+  background: rgba(160, 40, 40, 0.95);
+  border-color: #ff6060;
+}
 </style>
 </head>
 <body>
+<div id="gameWrapper">
 <div id="gameContainer">
   <canvas id="gameCanvas" width="900" height="620"></canvas>
   <audio id="bgMusic" loop src="https://audio.ngfiles.com/581000/581578_TheFatRat-Unity.mp3"></audio>
@@ -178,6 +283,11 @@ input[type="text"]:focus {
     <!-- MENU -->
     <div id="menuPanel" class="panel">
       <h1>🏒 ICEY HOCKEY</h1>
+      <p>Choose your platform:</p>
+      <div class="btn-row" style="margin-bottom:14px;">
+        <button class="btn btn-sm platform-btn active-platform" id="btnPlatformPC">🖥 PC</button>
+        <button class="btn btn-sm platform-btn" id="btnPlatformMobile">📱 Mobile</button>
+      </div>
       <p>Choose your game mode:</p>
       <button class="btn" id="btn2p">⚔ 2 Players (Local)</button>
       <button class="btn" id="btnBot">🤖 vs Bot</button>
@@ -225,6 +335,37 @@ input[type="text"]:focus {
 
   </div><!-- #overlay -->
 </div><!-- #gameContainer -->
+</div><!-- #gameWrapper -->
+
+<!-- MOBILE TOUCH CONTROLS -->
+<div id="mobileControls">
+  <!-- P1 side (left) -->
+  <div class="mobile-player-side" id="mobileP1Side">
+    <div class="dpad-container">
+      <button class="dpad-btn" data-key="p1-up">▲</button>
+      <div class="dpad-row">
+        <button class="dpad-btn" data-key="p1-left">◀</button>
+        <div class="dpad-center-dot"></div>
+        <button class="dpad-btn" data-key="p1-right">▶</button>
+      </div>
+      <button class="dpad-btn" data-key="p1-down">▼</button>
+    </div>
+    <button class="shoot-btn" data-key="p1-shoot">🏒<span class="shoot-label">SHOOT</span></button>
+  </div>
+  <!-- P2 side (right, only for 2P local) -->
+  <div class="mobile-player-side" id="mobileP2Side" style="display:none;">
+    <button class="shoot-btn" data-key="p2-shoot">🏒<span class="shoot-label">SHOOT</span></button>
+    <div class="dpad-container">
+      <button class="dpad-btn" data-key="p2-up">▲</button>
+      <div class="dpad-row">
+        <button class="dpad-btn" data-key="p2-left">◀</button>
+        <div class="dpad-center-dot"></div>
+        <button class="dpad-btn" data-key="p2-right">▶</button>
+      </div>
+      <button class="dpad-btn" data-key="p2-down">▼</button>
+    </div>
+  </div>
+</div><!-- #mobileControls -->
 
 <script>
 'use strict';
@@ -289,6 +430,12 @@ function makePlayer(x, y) {
 //  INPUT STATE
 // ============================================================
 const keys = {};
+
+let isMobile = false;
+const mobileKeys = {
+  'p1-up': false, 'p1-down': false, 'p1-left': false, 'p1-right': false, 'p1-shoot': false,
+  'p2-up': false, 'p2-down': false, 'p2-left': false, 'p2-right': false, 'p2-shoot': false,
+};
 
 // ============================================================
 //  CANVAS
@@ -547,7 +694,9 @@ function drawHUD(s) {
   ctx.font         = '11px Arial';
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'bottom';
-  if (gameMode === 'mp') {
+  if (isMobile) {
+    ctx.fillText('Use on-screen controls', CX, CANVAS_H - 3);
+  } else if (gameMode === 'mp') {
     const hint = mpRole === 1
       ? 'You: P1 (Blue) – WASD + Space'
       : 'You: P2 (Red) – ↑↓←→ + Enter';
@@ -877,6 +1026,7 @@ function connectWS(url) {
 
   ws.onclose = () => {
     if (gameState === 'playing' || gameState === 'goal' || gameState === 'periodEnd') {
+      document.getElementById('mobileControls').style.display = 'none';
       showPanel('mpLost');
       gameState = 'mpLost';
     } else if (gameState === 'mpWaiting') {
@@ -906,6 +1056,10 @@ function handleWsMsg(msg) {
       gameState = msg.phase;
       showHudButtons(true);
       playMusic();
+      if (isMobile) {
+        document.getElementById('mobileControls').style.display = 'flex';
+        document.getElementById('mobileP2Side').style.display = 'none';
+      }
     }
 
     // Mirror server phase
@@ -930,6 +1084,7 @@ function handleWsMsg(msg) {
 
   } else if (msg.type === 'playerLeft') {
     if (gameState !== 'menu' && gameState !== 'gameOver') {
+      document.getElementById('mobileControls').style.display = 'none';
       showPanel('mpLost');
       gameState = 'mpLost';
     }
@@ -938,12 +1093,21 @@ function handleWsMsg(msg) {
 
 function sendWsInput() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const isP1  = mpRole === 1;
-  const up    = isP1 ? !!keys['KeyW']     : !!keys['ArrowUp'];
-  const down  = isP1 ? !!keys['KeyS']     : !!keys['ArrowDown'];
-  const left  = isP1 ? !!keys['KeyA']     : !!keys['ArrowLeft'];
-  const right = isP1 ? !!keys['KeyD']     : !!keys['ArrowRight'];
-  const shoot = isP1 ? !!keys['Space']    : !!keys['Enter'];
+  let up, down, left, right, shoot;
+  if (isMobile) {
+    up    = mobileKeys['p1-up'];
+    down  = mobileKeys['p1-down'];
+    left  = mobileKeys['p1-left'];
+    right = mobileKeys['p1-right'];
+    shoot = mobileKeys['p1-shoot'];
+  } else {
+    const isP1  = mpRole === 1;
+    up    = isP1 ? !!keys['KeyW']     : !!keys['ArrowUp'];
+    down  = isP1 ? !!keys['KeyS']     : !!keys['ArrowDown'];
+    left  = isP1 ? !!keys['KeyA']     : !!keys['ArrowLeft'];
+    right = isP1 ? !!keys['KeyD']     : !!keys['ArrowRight'];
+    shoot = isP1 ? !!keys['Space']    : !!keys['Enter'];
+  }
   ws.send(JSON.stringify({ type: 'input', up, down, left, right, shoot }));
 }
 
@@ -969,6 +1133,11 @@ function startGame(mode) {
   gameState  = 'playing';
   showHudButtons(true);
   playMusic();
+  if (isMobile) {
+    document.getElementById('mobileControls').style.display = 'flex';
+    document.getElementById('mobileP2Side').style.display =
+      (mode === 'local2p') ? 'flex' : 'none';
+  }
 }
 
 function endPeriod() {
@@ -988,6 +1157,7 @@ function showGameOverScreen() {
     winnerText = "It's a Draw!";
   }
   document.getElementById('goWinner').textContent = winnerText;
+  document.getElementById('mobileControls').style.display = 'none';
   showPanel('gameOver');
   showHudButtons(false);
   stopMusic();
@@ -1067,6 +1237,7 @@ function returnToMenu() {
   showHudButtons(false);
   stopMusic();
   showPanel('menu');
+  document.getElementById('mobileControls').style.display = 'none';
 }
 
 // ============================================================
@@ -1086,19 +1257,37 @@ function update(dt) {
     if (p1.shootCooldown > 0) p1.shootCooldown -= dt;
     if (p2.shootCooldown > 0) p2.shootCooldown -= dt;
 
-    // P1 input
-    updatePlayer(p1,
-      !!keys['KeyW'], !!keys['KeyS'], !!keys['KeyA'], !!keys['KeyD'], dt);
-    if (keys['Space']) tryShoot(p1, RX2, CY);
+    if (isMobile) {
+      // Mobile: read from touch controls
+      updatePlayer(p1,
+        mobileKeys['p1-up'], mobileKeys['p1-down'],
+        mobileKeys['p1-left'], mobileKeys['p1-right'], dt);
+      if (mobileKeys['p1-shoot']) tryShoot(p1, RX2, CY);
 
-    // P2 – bot or human
-    if (gameMode === 'bot') {
-      updateBot(dt);
+      if (gameMode === 'bot') {
+        updateBot(dt);
+      } else {
+        updatePlayer(p2,
+          mobileKeys['p2-up'], mobileKeys['p2-down'],
+          mobileKeys['p2-left'], mobileKeys['p2-right'], dt);
+        if (mobileKeys['p2-shoot']) tryShoot(p2, RX, CY);
+      }
     } else {
-      updatePlayer(p2,
-        !!keys['ArrowUp'], !!keys['ArrowDown'],
-        !!keys['ArrowLeft'], !!keys['ArrowRight'], dt);
-      if (keys['Enter']) tryShoot(p2, RX, CY);
+      // PC: read from keyboard
+      // P1 input
+      updatePlayer(p1,
+        !!keys['KeyW'], !!keys['KeyS'], !!keys['KeyA'], !!keys['KeyD'], dt);
+      if (keys['Space']) tryShoot(p1, RX2, CY);
+
+      // P2 – bot or human
+      if (gameMode === 'bot') {
+        updateBot(dt);
+      } else {
+        updatePlayer(p2,
+          !!keys['ArrowUp'], !!keys['ArrowDown'],
+          !!keys['ArrowLeft'], !!keys['ArrowRight'], dt);
+        if (keys['Enter']) tryShoot(p2, RX, CY);
+      }
     }
 
     // Puck
@@ -1279,6 +1468,7 @@ document.getElementById('btnMpCancel').addEventListener('click', () => {
   gameState = 'menu';
   showHudButtons(false);
   stopMusic();
+  document.getElementById('mobileControls').style.display = 'none';
   showPanel('menu');
 });
 
@@ -1289,6 +1479,7 @@ document.getElementById('btnMpLostMenu').addEventListener('click', () => {
   gameState = 'menu';
   showHudButtons(false);
   stopMusic();
+  document.getElementById('mobileControls').style.display = 'none';
   showPanel('menu');
 });
 
@@ -1301,6 +1492,69 @@ document.getElementById('btnInGameMenu').addEventListener('click', () => returnT
 // ============================================================
 showPanel('menu');
 gameState = 'menu';
+
+// ── Platform picker ──────────────────────────────────────────
+function setPlatform(mobile) {
+  isMobile = mobile;
+  document.getElementById('btnPlatformPC').classList.toggle('active-platform', !mobile);
+  document.getElementById('btnPlatformMobile').classList.toggle('active-platform', mobile);
+  updateLayout();
+}
+document.getElementById('btnPlatformPC').addEventListener('click', () => setPlatform(false));
+document.getElementById('btnPlatformMobile').addEventListener('click', () => setPlatform(true));
+
+// Auto-detect mobile based on touch capability
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+  setPlatform(true);
+}
+
+// ── Responsive layout scaling ────────────────────────────────
+function updateLayout() {
+  const TOUCH_CONTROLS_H = 140; // approximate height of mobile controls bar
+  const availH = isMobile
+    ? window.innerHeight - TOUCH_CONTROLS_H
+    : window.innerHeight;
+  const scale = Math.min(1,
+    window.innerWidth / CANVAS_W,
+    availH / CANVAS_H
+  );
+  const container = document.getElementById('gameContainer');
+  const wrapper   = document.getElementById('gameWrapper');
+  container.style.transform = `scale(${scale})`;
+  container.style.transformOrigin = 'top center';
+  wrapper.style.height = `${CANVAS_H * scale}px`;
+  const mc = document.getElementById('mobileControls');
+  mc.style.maxWidth = `${window.innerWidth}px`;
+}
+window.addEventListener('resize', updateLayout);
+updateLayout();
+
+// ── Mobile touch controls ────────────────────────────────────
+function bindMobileControls() {
+  document.querySelectorAll('[data-key]').forEach(btn => {
+    const key = btn.dataset.key;
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      mobileKeys[key] = true;
+      btn.classList.add('active');
+    });
+    const release = () => {
+      mobileKeys[key] = false;
+      btn.classList.remove('active');
+    };
+    btn.addEventListener('pointerup',     release);
+    btn.addEventListener('pointerleave',  release);
+    btn.addEventListener('pointercancel', release);
+  });
+}
+bindMobileControls();
+
+// ── Auto-fill WS URL from current host ──────────────────────
+if (location.protocol.startsWith('http')) {
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  document.getElementById('serverUrlInput').value = `${wsProto}//${location.host}`;
+}
+
 requestAnimationFrame(gameLoop);
 </script>
 </body>

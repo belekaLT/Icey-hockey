@@ -44,6 +44,7 @@ const PERIOD_SECS  = 180;
 const NUM_PERIODS  = 3;
 const GOAL_DISP    = 2.0;               // seconds to show GOAL state
 const PERIOD_DISP  = 2.5;              // seconds to show periodEnd state
+const SCORE_TO_WIN = 3;
 
 // ─── State helpers ───────────────────────────────────────────────────────────
 function makePlayer(x, y) {
@@ -258,6 +259,9 @@ function checkGoal() {
     gameState.lastGoalScorer = 'p2';
     gameState.phase = 'goal';
     goalTimer = GOAL_DISP;
+    if (gameState.score.p2 >= SCORE_TO_WIN || gameState.overtime) {
+      gameState.phase = 'goal'; // will go to gameOver after timer
+    }
     return true;
   }
   // Right goal → P1 scores
@@ -266,6 +270,9 @@ function checkGoal() {
     gameState.lastGoalScorer = 'p1';
     gameState.phase = 'goal';
     goalTimer = GOAL_DISP;
+    if (gameState.score.p1 >= SCORE_TO_WIN || gameState.overtime) {
+      gameState.phase = 'goal'; // will go to gameOver after timer
+    }
     return true;
   }
   return false;
@@ -338,8 +345,9 @@ function gameTick() {
     case 'goal': {
       goalTimer -= DT;
       if (goalTimer <= 0) {
-        // Overtime sudden-death: a goal ends the game
-        if (gameState.overtime) {
+        const s = gameState.score;
+        // First to SCORE_TO_WIN goals wins
+        if (s.p1 >= SCORE_TO_WIN || s.p2 >= SCORE_TO_WIN || gameState.overtime) {
           gameState.phase = 'gameOver';
         } else {
           resetFaceoff();

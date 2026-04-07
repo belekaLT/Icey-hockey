@@ -1565,7 +1565,10 @@ document.getElementById('btnJoinSubmit').addEventListener('click', () => {
 });
 
 document.getElementById('joinCodeInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') joinRoom(e.target.value);
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    joinRoom(e.target.value);
+  }
 });
 
 document.getElementById('joinCodeInput').addEventListener('input', e => {

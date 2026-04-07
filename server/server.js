@@ -118,6 +118,8 @@ function makeInitialGameState() {
 // room: { code, clients, gameState, inputs, goalTimer, periodEndTimer }
 const rooms = new Map();
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// Note: I, O, 0, and 1 are intentionally excluded to avoid confusion
+// between visually similar characters when sharing codes verbally.
 
 function generateCode() {
   let code;
@@ -204,27 +206,23 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     room.clients = room.clients.filter(c => c.ws !== ws);
-    console.log(`[Icey Hockey] Player ${role} left room ${code}. Remaining: ${room.clients.length}`);
+    console.log(`[Icey Hockey] Player ${role} left room ${room.code}. Remaining: ${room.clients.length}`);
 
-    // Notify the remaining client and close its connection too
+    // Notify remaining clients and close their connections before deleting the room
     room.clients.forEach(c => {
       safeSend(c.ws, { type: 'playerLeft' });
-    });
-
-    // Remove the room so the code cannot be reused
-    deleteRoom(room);
-
-    // Close any still-open connections in this room
-    room.clients.forEach(c => {
       if (c.ws.readyState === WebSocket.OPEN) {
         try { c.ws.close(); } catch (e) { /* ignore */ }
       }
     });
     room.clients = [];
+
+    // Remove the room so the code cannot be reused
+    deleteRoom(room);
   });
 
   ws.on('error', err => {
-    console.error(`[Icey Hockey] WS error (room ${code}, role ${role}):`, err.message);
+    console.error(`[Icey Hockey] WS error (room ${room.code}, role ${role}):`, err.message);
   });
 });
 

@@ -1,10 +1,12 @@
 'use strict';
 
 /**
- * Icey Hockey – WebSocket Multiplayer Server
+ * Icey Hockey – HTTP + WebSocket Multiplayer Server
  *
  * Run:  npm install && npm start
  *       PORT=3000 node server.js   (optional PORT env var)
+ *
+ * Visit http://localhost:3000 to play in any browser.
  *
  * Protocol:
  *   Server → Client
@@ -16,9 +18,31 @@
  *     { type:'input', up, down, left, right, shoot }   (booleans)
  */
 
-const WebSocket = require('ws');
+const http       = require('http');
+const fs         = require('fs');
+const pathModule = require('path');
+const WebSocket  = require('ws');
 
-const PORT = parseInt(process.env.PORT, 10) || 3000;
+const PORT       = parseInt(process.env.PORT, 10) || 3000;
+const INDEX_FILE = pathModule.join(__dirname, '..', 'index.html');
+
+// ─── HTTP server (serves the game client) ────────────────────────────────────
+const httpServer = http.createServer((req, res) => {
+  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+    fs.readFile(INDEX_FILE, (err, data) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Internal Server Error');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
 
 // ─── Physics constants (mirror of client) ───────────────────────────────────
 const RX   = 50,  RY  = 50,  RW  = 800, RH  = 520;
@@ -82,9 +106,7 @@ const inputs = {
 let clients = [];
 
 // ─── WebSocket server ────────────────────────────────────────────────────────
-const wss = new WebSocket.Server({ port: PORT }, () => {
-  console.log(`[Icey Hockey] Server listening on ws://localhost:${PORT}`);
-});
+const wss = new WebSocket.Server({ server: httpServer });
 
 wss.on('connection', ws => {
   if (clients.length >= 2) {
@@ -453,6 +475,12 @@ function resetGame() {
 // ─── Start tick loop ─────────────────────────────────────────────────────────
 const tickInterval = setInterval(gameTick, 1000 / TICK_RATE);
 
+// ─── Start HTTP + WebSocket server ───────────────────────────────────────────
+httpServer.listen(PORT, () => {
+  console.log(`[Icey Hockey] Game available at  http://localhost:${PORT}`);
+  console.log(`[Icey Hockey] WebSocket listening on ws://localhost:${PORT}`);
+});
+
 // Graceful shutdown
-process.on('SIGINT',  () => { clearInterval(tickInterval); wss.close(); process.exit(0); });
-process.on('SIGTERM', () => { clearInterval(tickInterval); wss.close(); process.exit(0); });
+process.on('SIGINT',  () => { clearInterval(tickInterval); httpServer.close(); process.exit(0); });
+process.on('SIGTERM', () => { clearInterval(tickInterval); httpServer.close(); process.exit(0); });

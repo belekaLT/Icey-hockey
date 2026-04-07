@@ -204,9 +204,9 @@ function updatePuck() {
   if (pk.y - PUCK_R < RY)  { pk.y  = RY  + PUCK_R; pk.vy =  Math.abs(pk.vy) * ELASTICITY; }
   if (pk.y + PUCK_R > RY2) { pk.y  = RY2 - PUCK_R; pk.vy = -Math.abs(pk.vy) * ELASTICITY; }
 
-  // Back of nets
-  if (pk.x - PUCK_R < GOAL_L_BACK) { pk.x  = GOAL_L_BACK + PUCK_R; pk.vx =  Math.abs(pk.vx) * ELASTICITY; }
-  if (pk.x + PUCK_R > GOAL_R_BACK) { pk.x  = GOAL_R_BACK - PUCK_R; pk.vx = -Math.abs(pk.vx) * ELASTICITY; }
+  // Back of nets – only bounce if NOT in the goal opening (goals are detected by checkGoal)
+  if (pk.x - PUCK_R < GOAL_L_BACK && !(pk.y > GOAL_TOP && pk.y < GOAL_BOT)) { pk.x  = GOAL_L_BACK + PUCK_R; pk.vx =  Math.abs(pk.vx) * ELASTICITY; }
+  if (pk.x + PUCK_R > GOAL_R_BACK && !(pk.y > GOAL_TOP && pk.y < GOAL_BOT)) { pk.x  = GOAL_R_BACK - PUCK_R; pk.vx = -Math.abs(pk.vx) * ELASTICITY; }
 
   // Top/bottom edges inside goal cavities
   if (pk.x < RX && pk.x > GOAL_L_BACK) {
